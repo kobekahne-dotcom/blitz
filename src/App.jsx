@@ -81,6 +81,20 @@ function Home({ uid, prefillCode }) {
   const [code, setCode] = useState(prefillCode)
   const [joinTeam, setJoinTeam] = useState('')
 
+  // recovery form (dead phone / new device)
+  const [recCode, setRecCode] = useState(prefillCode)
+  const [claimCode, setClaimCode] = useState('')
+
+  const recover = async () => {
+    setBusy(true); setErr(null)
+    const { data, error } = await supabase.rpc('claim_team', {
+      p_join_code: recCode, p_claim_code: claimCode,
+    })
+    setBusy(false)
+    if (error) { setErr(error.message); return }
+    go('#/league/' + data.league_id)
+  }
+
   const create = async () => {
     setBusy(true); setErr(null)
     const { data, error } = await supabase.rpc('create_league', {
@@ -105,8 +119,9 @@ function Home({ uid, prefillCode }) {
   return (
     <div className="wrap" style={{ maxWidth: 520 }}>
       <div className="tabs">
-        <button className={mode === 'create' ? 'on' : ''} onClick={() => setMode('create')}>Create league</button>
-        <button className={mode === 'join' ? 'on' : ''} onClick={() => setMode('join')}>Join league</button>
+        <button className={mode === 'create' ? 'on' : ''} onClick={() => setMode('create')}>Create</button>
+        <button className={mode === 'join' ? 'on' : ''} onClick={() => setMode('join')}>Join</button>
+        <button className={mode === 'recover' ? 'on' : ''} onClick={() => setMode('recover')}>Recover</button>
       </div>
       {err && <div className="err">{err}</div>}
 
@@ -138,7 +153,7 @@ function Home({ uid, prefillCode }) {
             {busy ? 'Creating…' : 'Create league'}
           </button>
         </div>
-      ) : (
+      ) : mode === 'join' ? (
         <div className="card">
           <div className="field"><label className="microlabel">League code</label>
             <input value={code} onChange={e => setCode(e.target.value)} placeholder="8-letter code from your invite" /></div>
@@ -149,6 +164,24 @@ function Home({ uid, prefillCode }) {
           </button>
           <p style={{ marginTop: 10, fontSize: 13, color: 'var(--dim)' }}>
             Already joined on this device? Same button gets you back in.
+          </p>
+        </div>
+      ) : (
+        <div className="card">
+          <div className="notice">
+            Switched phones, cleared your browser, or lost your team? Enter the league code
+            and your 5-character recovery code to take your team back on this device.
+          </div>
+          <div className="field"><label className="microlabel">League code</label>
+            <input value={recCode} onChange={e => setRecCode(e.target.value)} placeholder="8-letter league code" /></div>
+          <div className="field"><label className="microlabel">Your recovery code</label>
+            <input value={claimCode} onChange={e => setClaimCode(e.target.value.toUpperCase())}
+              placeholder="5 characters" maxLength={5} style={{ textTransform: 'uppercase', letterSpacing: '0.15em' }} /></div>
+          <button className="btn block" disabled={busy || !recCode.trim() || claimCode.length < 5} onClick={recover}>
+            {busy ? 'Recovering…' : 'Get my team back'}
+          </button>
+          <p style={{ marginTop: 10, fontSize: 13, color: 'var(--dim)' }}>
+            Don't know your code? Ask your commissioner — they can see everyone's.
           </p>
         </div>
       )}
@@ -248,6 +281,7 @@ function Lobby({ league, teams, draft, uid, connIssue }) {
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
   const isCommish = league.commissioner_uid === uid
+  const myTeam = teams.find(t => t.owner_uid === uid)
   const shareUrl = window.location.origin + window.location.pathname + '#/join/' + league.join_code
 
   const start = async () => {
@@ -292,18 +326,37 @@ function Lobby({ league, teams, draft, uid, connIssue }) {
         {teams.map(t => (
           <div className="teamline" key={t.id}>
             <div className={'slotnum' + (t.draft_slot ? '' : ' unset')}>{t.draft_slot ?? '–'}</div>
-            <div style={{ fontWeight: 600 }}>{t.name}</div>
+            <div style={{ fontWeight: 600, flex: 1 }}>{t.name}</div>
             {t.owner_uid === uid && <span className="microlabel">you</span>}
             {t.owner_uid === league.commissioner_uid && <span className="microlabel" style={{ color: 'var(--blue)' }}>commish</span>}
+            {(isCommish || t.owner_uid === uid) && t.claim_code && (
+              <code style={{
+                background: '#F5F7F9', border: '1px solid var(--line)', padding: '3px 7px',
+                fontSize: 12, fontWeight: 800, letterSpacing: '0.1em',
+              }}>{t.claim_code}</code>
+            )}
           </div>
         ))}
+        {myTeam?.claim_code && (
+          <div className="notice" style={{ marginTop: 10, marginBottom: 0 }}>
+            <strong>Write down your recovery code: {myTeam.claim_code}</strong><br />
+            If your phone dies or you switch devices mid-draft, that code plus the league code
+            gets your team back. Without it you're locked out.
+          </div>
+        )}
+        {isCommish && (
+          <p style={{ marginTop: 8, fontSize: 13, color: 'var(--dim)' }}>
+            You can see everyone's recovery codes — screenshot this before you start.
+            If someone gets locked out tonight, read them their code.
+          </p>
+        )}
       </div>
 
       {isCommish ? (
         <>
           <div className="notice">Draft order is randomized when you hit start. Anyone not joined by then plays from the couch.</div>
           <button className="btn block danger" disabled={busy || teams.length < 2} onClick={start}>
-            {busy ? 'Starting…' : `Start draft with ${teams.length} teams`}
+            {busy ? 'Starting…' : `Start draft with ${teams.length} ${teams.length === 1 ? 'team' : 'teams'}`}
           </button>
         </>
       ) : (
