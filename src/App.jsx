@@ -283,6 +283,24 @@ function Lobby({ league, teams, draft, uid, connIssue }) {
   const isCommish = league.commissioner_uid === uid
   const myTeam = teams.find(t => t.owner_uid === uid)
   const shareUrl = window.location.origin + window.location.pathname + '#/join/' + league.join_code
+  const [editingId, setEditingId] = useState(null)
+  const [editName, setEditName] = useState('')
+
+  const saveName = async (teamId) => {
+    setBusy(true); setErr(null)
+    const { error } = await supabase.rpc('rename_team', { p_team_id: teamId, p_name: editName })
+    setBusy(false)
+    if (error) { setErr(error.message); return }
+    setEditingId(null)
+  }
+
+  const removeTeam = async (t) => {
+    if (!window.confirm(`Remove "${t.name}" from the league? This cannot be undone.`)) return
+    setBusy(true); setErr(null)
+    const { error } = await supabase.rpc('remove_team', { p_team_id: t.id })
+    setBusy(false)
+    if (error) setErr(error.message)
+  }
 
   const start = async () => {
     if (!window.confirm(`Start the draft with ${teams.length} teams? Draft order is randomized and no one else can join.`)) return
@@ -323,20 +341,48 @@ function Lobby({ league, teams, draft, uid, connIssue }) {
         <div className="microlabel" style={{ marginBottom: 4 }}>
           Teams — {teams.length} of {league.num_teams} joined
         </div>
-        {teams.map(t => (
-          <div className="teamline" key={t.id}>
-            <div className={'slotnum' + (t.draft_slot ? '' : ' unset')}>{t.draft_slot ?? '–'}</div>
-            <div style={{ fontWeight: 600, flex: 1 }}>{t.name}</div>
-            {t.owner_uid === uid && <span className="microlabel">you</span>}
-            {t.owner_uid === league.commissioner_uid && <span className="microlabel" style={{ color: 'var(--blue)' }}>commish</span>}
-            {(isCommish || t.owner_uid === uid) && t.claim_code && (
-              <code style={{
-                background: '#F5F7F9', border: '1px solid var(--line)', padding: '3px 7px',
-                fontSize: 12, fontWeight: 800, letterSpacing: '0.1em',
-              }}>{t.claim_code}</code>
-            )}
-          </div>
-        ))}
+        {teams.map(t => {
+          const canEdit = isCommish || t.owner_uid === uid
+          const canRemove = isCommish && t.owner_uid !== league.commissioner_uid
+          return (
+            <div className="teamline" key={t.id}>
+              <div className={'slotnum' + (t.draft_slot ? '' : ' unset')}>{t.draft_slot ?? '–'}</div>
+              {editingId === t.id ? (
+                <>
+                  <input
+                    value={editName}
+                    onChange={e => setEditName(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') saveName(t.id); if (e.key === 'Escape') setEditingId(null) }}
+                    maxLength={40} autoFocus
+                    style={{ flex: 1, minWidth: 0, padding: '7px 9px', border: '1px solid var(--blue)', borderRadius: 2 }}
+                  />
+                  <button className="btn small" disabled={busy} onClick={() => saveName(t.id)}>Save</button>
+                  <button className="btn small secondary" disabled={busy} onClick={() => setEditingId(null)}>Cancel</button>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontWeight: 600, flex: 1, minWidth: 0 }}>{t.name}</div>
+                  {t.owner_uid === uid && <span className="microlabel">you</span>}
+                  {t.owner_uid === league.commissioner_uid && <span className="microlabel" style={{ color: 'var(--blue)' }}>commish</span>}
+                  {canEdit && t.claim_code && (
+                    <code style={{
+                      background: '#F5F7F9', border: '1px solid var(--line)', padding: '3px 7px',
+                      fontSize: 12, fontWeight: 800, letterSpacing: '0.1em',
+                    }}>{t.claim_code}</code>
+                  )}
+                  {canEdit && (
+                    <button className="qbtn" title="Rename"
+                      onClick={() => { setEditingId(t.id); setEditName(t.name); setErr(null) }}>✎</button>
+                  )}
+                  {canRemove && (
+                    <button className="qbtn" title="Remove this team" style={{ color: 'var(--red)', borderColor: '#F5B5B5' }}
+                      onClick={() => removeTeam(t)}>✕</button>
+                  )}
+                </>
+              )}
+            </div>
+          )
+        })}
         {myTeam?.claim_code && (
           <div className="notice" style={{ marginTop: 10, marginBottom: 0 }}>
             <strong>Write down your recovery code: {myTeam.claim_code}</strong><br />
