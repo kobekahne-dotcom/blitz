@@ -153,6 +153,7 @@ function Sheet({ kind, close, prefillCode, onErr }) {
     <div className="sheetback" onClick={() => !busy && close()}>
       <div className="sheet" onClick={e => e.stopPropagation()}>
         <div className="sheet-grab" />
+        <button className="sheet-close" onClick={close} aria-label="Close">✕</button>
         <h3>{titles[kind]}</h3>
         {err && <div className="err">{err}</div>}
 

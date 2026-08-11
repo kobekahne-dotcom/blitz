@@ -385,7 +385,6 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   animation: slideup .18s ease-out;
 }
 @keyframes slideup { from { transform: translateY(18px); opacity: .6 } to { transform: none; opacity: 1 } }
-.sheet-grab { width: 38px; height: 4px; background: var(--line2); border-radius: 99px; margin: 0 auto 14px; }
 .sheet h3 { font-size: 20px; margin-bottom: 12px; }
 .sheet-note { color: var(--dim); font-size: 13.5px; margin-bottom: 14px; }
 @media (min-width: 640px) {
@@ -481,4 +480,38 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 @media (display-mode: standalone) {
   body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
   input, textarea { -webkit-user-select: text; user-select: text; }
+}
+
+/* ---------- quick-add button + closable sheets ---------- */
+.addbtn {
+  background: var(--blue); color: #06121D; border: 0; border-radius: 9px;
+  width: 42px; height: 42px; flex: 0 0 auto;
+  font-size: 24px; font-weight: 700; line-height: 1; padding: 0 0 2px 0;
+  display: grid; place-items: center;
+}
+.addbtn:disabled { background: var(--card2); color: var(--dim2); border: 1px solid var(--line2); }
+.addbtn:active:not(:disabled) { transform: scale(.92); }
+
+.sheet { position: relative; transition: transform .12s ease-out; }
+.sheet-grab {
+  touch-action: none; cursor: grab;
+  padding: 6px 0; width: 100%; background: none; margin: 0 auto 10px;
+  display: flex; justify-content: center;
+}
+.sheet-grab::after {
+  content: ''; display: block; width: 40px; height: 4px;
+  background: var(--line2); border-radius: 99px;
+}
+.sheet-close {
+  position: absolute; top: 10px; right: 12px; z-index: 5;
+  background: var(--card2); border: 1px solid var(--line2); color: var(--dim);
+  width: 34px; height: 34px; border-radius: 50%; font-size: 14px; line-height: 1;
+  display: grid; place-items: center;
+}
+.sheet-close:active { background: var(--line2); }
+
+@media (max-width: 400px) {
+  .prow { gap: 8px; }
+  .qbtn, .addbtn { width: 38px; height: 38px; }
+  .pstat { min-width: 34px; }
 }

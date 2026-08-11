@@ -557,6 +557,8 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch }) {
                     </div>
                     <button className={'qbtn star' + (queueIds.has(p.id) ? ' on' : '')}
                       onClick={e => { e.stopPropagation(); toggleQueue(p) }} title="Queue">★</button>
+                    <button className="addbtn" disabled={!myTurn || busy} title="Draft him"
+                      onClick={e => { e.stopPropagation(); doPick(p) }}>+</button>
                   </div>
                 ))}
               </div>

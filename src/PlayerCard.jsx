@@ -38,6 +38,20 @@ const USAGE = [
 export default function PlayerCard({ p, projKey, myTurn, busy, onDraft, onQueue, queued, onClose }) {
   const [tab, setTab] = useState('overview')
   const [imgFail, setImgFail] = useState(false)
+  const [dragY, setDragY] = useState(0)
+  const startY = React.useRef(null)
+
+  // swipe the sheet down to dismiss
+  const onTouchStart = e => { startY.current = e.touches[0].clientY }
+  const onTouchMove = e => {
+    if (startY.current == null) return
+    const dy = e.touches[0].clientY - startY.current
+    if (dy > 0) setDragY(dy)
+  }
+  const onTouchEnd = () => {
+    if (dragY > 110) onClose()
+    setDragY(0); startY.current = null
+  }
   const proj = p.projd || {}
   const ly = p.lyd || {}
   const isDef = p.pos === 'DEF'
@@ -47,8 +61,10 @@ export default function PlayerCard({ p, projKey, myTurn, busy, onDraft, onQueue,
 
   return (
     <div className="sheetback" onClick={() => !busy && onClose()}>
-      <div className="sheet tall" onClick={e => e.stopPropagation()}>
-        <div className="sheet-grab" />
+      <div className="sheet tall" onClick={e => e.stopPropagation()}
+        style={dragY ? { transform: `translateY(${dragY}px)` } : undefined}>
+        <div className="sheet-grab" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} />
+        <button className="sheet-close" onClick={onClose} aria-label="Close">✕</button>
 
         {/* ---- hero ---- */}
         <div className="pc-hero">
