@@ -258,6 +258,8 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
 function FreeAgents({ players, allPicks, projKey, onOpenPlayer }) {
   const [q, setQ] = useState('')
   const [posSel, setPosSel] = useState(new Set())
+  const [shown, setShown] = useState(75)
+  useEffect(() => { setShown(75) }, [posSel, q])
   const taken = useMemo(() => new Set((allPicks || []).map(p => p.player_id)), [allPicks])
 
   const list = useMemo(() => {
@@ -284,7 +286,7 @@ function FreeAgents({ players, allPicks, projKey, onOpenPlayer }) {
             })}>{pos}</button>
         ))}
       </div>
-      {list.slice(0, 60).map(p => (
+      {list.slice(0, shown).map(p => (
         <div className="row tap nopad" key={p.id} onClick={() => onOpenPlayer(p)}>
           <div className="slotpill">{p.pos}{p.prank ?? ''}</div>
           <Shot p={p} size={38} />
@@ -295,6 +297,11 @@ function FreeAgents({ players, allPicks, projKey, onOpenPlayer }) {
           <div className="nums"><div className="num"><b>{perGame(p, projKey) ?? '—'}</b><s>PROJ</s></div></div>
         </div>
       ))}
+      {list.length > shown && (
+        <button className="btn block secondary" onClick={() => setShown(n => n + 100)}>
+          Show more — {list.length - shown} left
+        </button>
+      )}
       <div className="notice mt14">
         Add/drop and waivers aren't built yet — this is the free-agent pool so you can see who's out there.
       </div>

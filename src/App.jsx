@@ -372,6 +372,7 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
   const [tab, setTab] = useState('players')
   const [q, setQ] = useState('')
   const [posSel, setPosSel] = useState(new Set())   // empty = all
+  const [shown, setShown] = useState(75)
   const [rosterState, setRosterState] = useState(null)
   const [confirmP, setConfirmP] = useState(null)
   const [actErr, setActErr] = useState(null)
@@ -475,6 +476,7 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
     }
     return list.sort((a, b) => (a.adp ?? 9999) - (b.adp ?? 9999) || (b[projKey] ?? 0) - (a[projKey] ?? 0))
   }, [players, takenIds, posSel, q, projKey])
+  useEffect(() => { setShown(75) }, [posSel, q])
 
   const doPick = async (p) => {
     if (!myTeam) return
@@ -603,7 +605,7 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
                 
               </div>
               <div className="plist">
-                {available.slice(0, 60).map((p, i) => (
+                {available.slice(0, shown).map((p, i) => (
                   <div className="row tap nopad" key={p.id} onClick={() => setConfirmP(p)}>
                     <div className="rankcell">{p.pos}{p.prank ?? ''}</div>
                     <Avatar p={p} size={38} eager={i < 15} />
@@ -629,7 +631,11 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
                   </div>
                 ))}
               </div>
-              {available.length > 60 && <div className="hint pad">Showing top 60 — search to narrow.</div>}
+              {available.length > shown && (
+                <button className="btn block secondary" onClick={() => setShown(n => n + 100)}>
+                  Show more — {available.length - shown} left
+                </button>
+              )}
               {!available.length && <div className="hint pad">No players match.</div>}
             </>
           )}
