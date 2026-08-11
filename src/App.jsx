@@ -381,8 +381,9 @@ function buildSlots(roster, rosterCfg, projKey) {
       out.push({ slot: pos, player: p || null })
     }
   }
+  const FLEXPOS = cfg.flex_te ? ['RB','WR','TE'] : ['RB','WR']
   for (let i = 0; i < (cfg.FLEX || 0); i++) {
-    const p = pool.find(x => ['RB','WR','TE'].includes(x.pos) && !used.has(x.id))
+    const p = pool.find(x => FLEXPOS.includes(x.pos) && !used.has(x.id))
     if (p) used.add(p.id)
     out.push({ slot: 'FLEX', player: p || null })
   }
@@ -398,13 +399,16 @@ const POS_FILTERS = [
   { k: 'QB',   label: 'QB',    pos: ['QB'] },
   { k: 'RB',   label: 'RB',    pos: ['RB'] },
   { k: 'WR',   label: 'WR',    pos: ['WR'] },
-  { k: 'RBWR', label: 'RB/WR', pos: ['RB', 'WR'] },
   { k: 'TE',   label: 'TE',    pos: ['TE'] },
-  { k: 'FLEX', label: 'FLEX',  pos: ['RB', 'WR', 'TE'] },
+  { k: 'FLEX', label: 'FLEX',  pos: ['RB', 'WR'] },   // widened per-league if flex_te
   { k: 'K',    label: 'K',     pos: ['K'] },
   { k: 'DEF',  label: 'DEF',   pos: ['DEF'] },
 ]
-const posOf = k => (POS_FILTERS.find(f => f.k === k) || POS_FILTERS[0]).pos
+const posOf = (k, flexTE) => {
+  const f = POS_FILTERS.find(x => x.k === k) || POS_FILTERS[0]
+  if (f.k === 'FLEX' && flexTE) return ['RB', 'WR', 'TE']
+  return f.pos
+}
 
 const BOT_CAP = { QB: 2, RB: 6, WR: 7, TE: 2, K: 1, DEF: 1 }
 
@@ -526,7 +530,7 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
   const available = useMemo(() => {
     if (!players) return []
     let list = players.filter(p => !takenIds.has(p.id))
-    const pf = posOf(posKey)
+    const pf = posOf(posKey, !!(league.roster && league.roster.flex_te))
     if (pf) list = list.filter(p => pf.includes(p.pos))
     if (q.trim()) {
       const s = q.trim().toLowerCase()
@@ -751,7 +755,7 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
                         </div>
                       </>) : (<>
                         <div className="nm" style={{ color: 'var(--dim2)' }}>Empty</div>
-                        <div className="sub">still need a {sl.slot === 'FLEX' ? 'RB/WR/TE' : sl.slot}</div>
+                        <div className="sub">still need a {sl.slot === 'FLEX' ? (league.roster?.flex_te ? 'RB/WR/TE' : 'RB/WR') : sl.slot}</div>
                       </>)}
                     </div>
                     <div className="nums"><div className="num"><b>{sl.player?.[projKey] ?? '—'}</b><s>PROJ</s></div></div>

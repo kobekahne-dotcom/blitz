@@ -22,13 +22,16 @@ const POS_FILTERS = [
   { k: 'QB',   label: 'QB',    pos: ['QB'] },
   { k: 'RB',   label: 'RB',    pos: ['RB'] },
   { k: 'WR',   label: 'WR',    pos: ['WR'] },
-  { k: 'RBWR', label: 'RB/WR', pos: ['RB', 'WR'] },
   { k: 'TE',   label: 'TE',    pos: ['TE'] },
-  { k: 'FLEX', label: 'FLEX',  pos: ['RB', 'WR', 'TE'] },
+  { k: 'FLEX', label: 'FLEX',  pos: ['RB', 'WR'] },   // widened per-league if flex_te
   { k: 'K',    label: 'K',     pos: ['K'] },
   { k: 'DEF',  label: 'DEF',   pos: ['DEF'] },
 ]
-const posOf = k => (POS_FILTERS.find(f => f.k === k) || POS_FILTERS[0]).pos
+const posOf = (k, flexTE) => {
+  const f = POS_FILTERS.find(x => x.k === k) || POS_FILTERS[0]
+  if (f.k === 'FLEX' && flexTE) return ['RB', 'WR', 'TE']
+  return f.pos
+}
 
 const SLOT_ORDER = ['QB', 'RB', 'WR', 'TE', 'FLEX', 'K', 'DEF', 'BN']
 
@@ -285,7 +288,7 @@ function FreeAgents({ players, allPicks, projKey, onOpenPlayer }) {
   const list = useMemo(() => {
     if (!players) return []
     let l = players.filter(p => !taken.has(p.id))
-    const pf = posOf(posKey)
+    const pf = posOf(posKey, false)
     if (pf) l = l.filter(p => pf.includes(p.pos))
     if (q.trim()) {
       const s = q.trim().toLowerCase()

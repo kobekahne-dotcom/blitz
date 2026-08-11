@@ -100,6 +100,7 @@ function Sheet({ kind, close, prefillCode }) {
   const [slot, setSlot] = useState(1)
   const [code, setCode] = useState(prefillCode || '')
   const [claim, setClaim] = useState('')
+  const [flexTE, setFlexTE] = useState(false)
 
   const run = async (fn, args, onOk) => {
     setBusy(true); setErr(null)
@@ -165,11 +166,21 @@ function Sheet({ kind, close, prefillCode }) {
               <F label="Clock"><select value={secs} onChange={e => setSecs(+e.target.value)}>
                 {[30, 60, 90, 120, 180, 300].map(n => <option key={n} value={n}>{n}s</option>)}</select></F>
             </div>
+            <label className="togglerow">
+              <input type="checkbox" checked={flexTE} onChange={e => setFlexTE(e.target.checked)} />
+              <span>
+                <strong>Tight ends can fill the flex</strong>
+                <small>Off = flex is RB/WR only</small>
+              </span>
+            </label>
             <button className="btn block big" disabled={busy || !name.trim() || !teamName.trim()}
               onClick={() => run('create_league', {
                 p_name: name, p_num_teams: numTeams, p_rounds: rounds, p_scoring: scoring,
                 p_pick_seconds: secs, p_team_name: teamName,
-              }, d => go('#/league/' + d.league_id))}>
+              }, async d => {
+                if (flexTE) await supabase.rpc('set_flex_te', { p_league_id: d.league_id, p_on: true })
+                go('#/league/' + d.league_id)
+              })}>
               {busy ? 'Creating' : 'Create League'}
             </button>
           </>

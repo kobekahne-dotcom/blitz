@@ -419,3 +419,12 @@ h1, h2, h3 { font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; }
 .slotpill.K  { color:#C79BF0; border-color:#443159 }
 .slotpill.DEF{ color:#A9B6C4; border-color:#39424C }
 .slotpill.FLEX { color:#8FE3C6; border-color:#2A4F45 }
+
+/* ---------- settings toggle row ---------- */
+.togglerow {
+  display: flex; align-items: flex-start; gap: 11px;
+  padding: 12px 0; border-top: 1px solid var(--line); margin-bottom: 4px; cursor: pointer;
+}
+.togglerow input { width: 20px; height: 20px; accent-color: var(--green); flex: 0 0 auto; margin-top: 1px; }
+.togglerow strong { display: block; font-size: 13.5px; font-weight: 600; }
+.togglerow small { color: var(--dim2); font-size: 12px; }
