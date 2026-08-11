@@ -1,0 +1,32 @@
+{
+  "url": "https://api.github.com/repos/kobekahne-dotcom/blitz/pages/builds/1145444394",
+  "status": "building",
+  "error": {
+    "message": null
+  },
+  "pusher": {
+    "login": "kobekahne-dotcom",
+    "id": 278871142,
+    "node_id": "U_kgDOEJ88Zg",
+    "avatar_url": "https://avatars.githubusercontent.com/u/278871142?v=4",
+    "gravatar_id": "",
+    "url": "https://api.github.com/users/kobekahne-dotcom",
+    "html_url": "https://github.com/kobekahne-dotcom",
+    "followers_url": "https://api.github.com/users/kobekahne-dotcom/followers",
+    "following_url": "https://api.github.com/users/kobekahne-dotcom/following{/other_user}",
+    "gists_url": "https://api.github.com/users/kobekahne-dotcom/gists{/gist_id}",
+    "starred_url": "https://api.github.com/users/kobekahne-dotcom/starred{/owner}{/repo}",
+    "subscriptions_url": "https://api.github.com/users/kobekahne-dotcom/subscriptions",
+    "organizations_url": "https://api.github.com/users/kobekahne-dotcom/orgs",
+    "repos_url": "https://api.github.com/users/kobekahne-dotcom/repos",
+    "events_url": "https://api.github.com/users/kobekahne-dotcom/events{/privacy}",
+    "received_events_url": "https://api.github.com/users/kobekahne-dotcom/received_events",
+    "type": "User",
+    "user_view_type": "public",
+    "site_admin": false
+  },
+  "commit": "4046a8702830afa9878775433a76f533dabfc57c",
+  "duration": 0,
+  "created_at": "2026-08-11T16:21:10Z",
+  "updated_at": "2026-08-11T16:21:10Z"
+}

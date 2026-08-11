@@ -3,9 +3,6 @@ import { supabase } from './supabase.js'
 
 const go = (h) => { window.location.hash = h }
 
-/* ============================================================
-   HOME — my leagues, mock draft, create, join.
-   ============================================================ */
 export default function Home({ uid, prefillCode }) {
   const [leagues, setLeagues] = useState(null)
   const [sheet, setSheet] = useState(prefillCode ? 'join' : null)
@@ -14,118 +11,86 @@ export default function Home({ uid, prefillCode }) {
   const load = useCallback(async () => {
     const { data: teams } = await supabase
       .from('teams').select('id,name,league_id,draft_slot').eq('owner_uid', uid)
-    if (!teams) { setLeagues([]); return }
-    const ids = teams.map(t => t.league_id)
+    const ids = (teams || []).map(t => t.league_id)
     if (!ids.length) { setLeagues([]); return }
     const [{ data: lgs }, { data: drafts }] = await Promise.all([
       supabase.from('leagues').select('*').in('id', ids),
       supabase.from('drafts').select('league_id,status,current_pick').in('league_id', ids),
     ])
     const dmap = new Map((drafts || []).map(d => [d.league_id, d]))
-    const rows = (lgs || []).map(l => ({
-      ...l,
-      myTeam: teams.find(t => t.league_id === l.id),
-      draft: dmap.get(l.id),
-    })).sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-    setLeagues(rows)
+    setLeagues((lgs || []).map(l => ({
+      ...l, myTeam: teams.find(t => t.league_id === l.id), draft: dmap.get(l.id),
+    })).sort((a, b) => new Date(b.created_at) - new Date(a.created_at)))
   }, [uid])
 
   useEffect(() => { load() }, [load])
 
   const remove = async (l) => {
-    if (!window.confirm(`Delete "${l.name}"? This wipes the league and its draft for everyone.`)) return
+    if (!window.confirm(`Delete "${l.name}"? This wipes it for everyone.`)) return
     const { error } = await supabase.rpc('delete_league', { p_league_id: l.id })
     if (error) setErr(error.message); else load()
   }
 
   return (
-    <>
-      <div className="hero">
-        <div className="hero-in">
-          <div className="hero-kicker">2026 season</div>
-          <h1 className="hero-h1">Draft day starts here</h1>
-          <p className="hero-sub">Real projections, live board, no spreadsheet.</p>
-        </div>
+    <div className="wrap">
+      <div className="homeactions">
+        <button className="key" onClick={() => setSheet('mock')}>Mock Draft</button>
+        <button onClick={() => setSheet('create')}>Create League</button>
+        <button onClick={() => setSheet('join')}>Join League</button>
+        <button onClick={() => setSheet('recover')}>Recover Team</button>
       </div>
 
-      <div className="wrap">
-        {err && <div className="err">{err}</div>}
+      {err && <div className="err">{err}</div>}
 
-        <div className="actiongrid">
-          <button className="action primary" onClick={() => setSheet('mock')}>
-            <span className="a-ic">⚡</span>
-            <span className="a-t">Mock draft</span>
-            <span className="a-s">Draft against the computer, right now</span>
-          </button>
-          <button className="action" onClick={() => setSheet('create')}>
-            <span className="a-ic">🏈</span>
-            <span className="a-t">Create a league</span>
-            <span className="a-s">Invite your friends</span>
-          </button>
-          <button className="action" onClick={() => setSheet('join')}>
-            <span className="a-ic">＋</span>
-            <span className="a-t">Join a league</span>
-            <span className="a-s">Got a code or a link?</span>
-          </button>
-          <button className="action" onClick={() => setSheet('recover')}>
-            <span className="a-ic">↺</span>
-            <span className="a-t">Recover my team</span>
-            <span className="a-s">New phone or cleared browser</span>
-          </button>
+      <div className="sect">
+        <h2>My Leagues</h2>
+        {leagues && <span className="right">{leagues.length}</span>}
+      </div>
+
+      {leagues === null && <div className="loading"><span className="spinner" />Loading</div>}
+
+      {leagues && !leagues.length && (
+        <div className="empty">
+          <strong>No leagues yet</strong>
+          <p>Run a mock draft to try it, or create a league and send the link to your friends.</p>
         </div>
+      )}
 
-        <div className="sectionhead">
-          <h2>My leagues</h2>
-          {leagues && <span className="microlabel">{leagues.length}</span>}
-        </div>
-
-        {leagues === null && <div className="loading"><span className="spinner" />Loading…</div>}
-
-        {leagues && leagues.length === 0 && (
-          <div className="empty">
-            <div className="empty-ic">🏈</div>
-            <strong>No leagues yet</strong>
-            <p>Run a mock draft to try it out, or create a league and send your friends the link.</p>
-          </div>
-        )}
-
-        {leagues && leagues.map(l => {
-          const st = l.draft?.status || 'pending'
-          const label = st === 'pending' ? 'Waiting to start'
-            : st === 'active' ? `Drafting · pick ${l.draft.current_pick}`
-            : st === 'paused' ? 'Paused' : 'Draft complete'
-          return (
-            <div className="leaguecard" key={l.id} onClick={() => go('#/league/' + l.id)}>
-              <div className="lc-main">
-                <div className="lc-top">
-                  <strong className="lc-name">{l.name}</strong>
-                  {l.is_mock && <span className="tag mock">MOCK</span>}
-                  {l.commissioner_uid === uid && <span className="tag">COMMISH</span>}
-                </div>
-                <div className="lc-meta">{l.myTeam?.name} · {l.num_teams} teams · {l.rounds} rds · {l.scoring.toUpperCase()}</div>
-                <div className={'lc-status s-' + st}>{label}</div>
+      {leagues && leagues.map(l => {
+        const st = l.draft?.status || 'pending'
+        const label = st === 'pending' ? 'Waiting to start'
+          : st === 'active' ? `Drafting · pick ${l.draft.current_pick}`
+          : st === 'paused' ? 'Paused' : 'Draft complete'
+        return (
+          <div className="lgrow" key={l.id} onClick={() => go('#/league/' + l.id)}>
+            <div className="lgcrest">{l.name.slice(0, 1).toUpperCase()}</div>
+            <div className="who">
+              <div className="lgname">
+                {l.name}
+                {l.is_mock && <span className="badge mock">MOCK</span>}
+                {l.commissioner_uid === uid && <span className="badge you">COMMISH</span>}
               </div>
-              {l.commissioner_uid === uid && (
-                <button className="lc-del" title="Delete league"
-                  onClick={e => { e.stopPropagation(); remove(l) }}>✕</button>
-              )}
+              <div className="lgmeta">
+                {l.myTeam?.name}<span className="dot">·</span>{l.num_teams} teams
+                <span className="dot">·</span>{l.rounds} rds<span className="dot">·</span>{l.scoring.toUpperCase()}
+              </div>
+              <div className={'lgstate s-' + st}>{label}</div>
             </div>
-          )
-        })}
-      </div>
+            {l.commissioner_uid === uid && (
+              <button className="xbtn" onClick={e => { e.stopPropagation(); remove(l) }}>✕</button>
+            )}
+          </div>
+        )
+      })}
 
-      {sheet && <Sheet kind={sheet} close={() => setSheet(null)} prefillCode={prefillCode} onErr={setErr} />}
-    </>
+      {sheet && <Sheet kind={sheet} close={() => setSheet(null)} prefillCode={prefillCode} />}
+    </div>
   )
 }
 
-/* ============================================================
-   Bottom sheet forms
-   ============================================================ */
-function Sheet({ kind, close, prefillCode, onErr }) {
+function Sheet({ kind, close, prefillCode }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
-
   const [name, setName] = useState('')
   const [teamName, setTeamName] = useState('')
   const [numTeams, setNumTeams] = useState(10)
@@ -143,11 +108,7 @@ function Sheet({ kind, close, prefillCode, onErr }) {
     if (error) { setErr(error.message); return }
     onOk(data)
   }
-
-  const titles = {
-    mock: 'Mock draft', create: 'Create a league',
-    join: 'Join a league', recover: 'Recover my team',
-  }
+  const titles = { mock: 'Mock Draft', create: 'Create League', join: 'Join League', recover: 'Recover Team' }
 
   return (
     <div className="sheetback" onClick={() => !busy && close()}>
@@ -155,115 +116,88 @@ function Sheet({ kind, close, prefillCode, onErr }) {
         <div className="sheet-grab" />
         <button className="sheet-close" onClick={close} aria-label="Close">✕</button>
         <h3>{titles[kind]}</h3>
-        {err && <div className="err">{err}</div>}
+        {err && <div className="err" style={{ margin: '0 0 12px' }}>{err}</div>}
 
         {kind === 'mock' && (
           <>
-            <p className="sheet-note">Every other seat is filled by the computer. It starts the moment you tap.</p>
+            <p className="sheet-note">Every other seat is played by the computer. Starts immediately.</p>
             <div className="row2">
-              <Field label="Teams">
-                <select value={numTeams} onChange={e => setNumTeams(+e.target.value)}>
-                  {[4, 6, 8, 10, 12, 14, 16].map(n => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </Field>
-              <Field label="Your pick">
-                <select value={slot} onChange={e => setSlot(+e.target.value)}>
-                  {Array.from({ length: numTeams }, (_, i) => i + 1).map(n =>
-                    <option key={n} value={n}>{n}{n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'}</option>)}
-                </select>
-              </Field>
+              <F label="Teams"><select value={numTeams} onChange={e => setNumTeams(+e.target.value)}>
+                {[4, 6, 8, 10, 12, 14, 16].map(n => <option key={n} value={n}>{n}</option>)}</select></F>
+              <F label="Your pick"><select value={slot} onChange={e => setSlot(+e.target.value)}>
+                {Array.from({ length: numTeams }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}</option>)}</select></F>
             </div>
             <div className="row2">
-              <Field label="Rounds">
-                <select value={rounds} onChange={e => setRounds(+e.target.value)}>
-                  {[8, 10, 12, 14, 15, 16].map(n => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </Field>
-              <Field label="Scoring">
-                <select value={scoring} onChange={e => setScoring(e.target.value)}>
-                  <option value="ppr">Full PPR</option><option value="half">Half PPR</option><option value="std">Standard</option>
-                </select>
-              </Field>
+              <F label="Rounds"><select value={rounds} onChange={e => setRounds(+e.target.value)}>
+                {[8, 10, 12, 14, 15, 16].map(n => <option key={n} value={n}>{n}</option>)}</select></F>
+              <F label="Scoring"><select value={scoring} onChange={e => setScoring(e.target.value)}>
+                <option value="ppr">Full PPR</option><option value="half">Half PPR</option><option value="std">Standard</option>
+              </select></F>
             </div>
-            <Field label="Clock">
-              <select value={secs} onChange={e => setSecs(+e.target.value)}>
-                <option value={30}>30 seconds</option><option value={60}>60 seconds</option>
-                <option value={90}>90 seconds</option><option value={180}>3 minutes</option>
-                <option value={600}>10 minutes (take your time)</option>
-              </select>
-            </Field>
+            <F label="Clock"><select value={secs} onChange={e => setSecs(+e.target.value)}>
+              <option value={30}>30 seconds</option><option value={60}>60 seconds</option>
+              <option value={90}>90 seconds</option><option value={180}>3 minutes</option>
+              <option value={600}>10 minutes</option></select></F>
             <button className="btn block big" disabled={busy}
               onClick={() => run('create_mock_draft', {
                 p_num_teams: numTeams, p_rounds: rounds, p_scoring: scoring,
                 p_pick_seconds: secs, p_my_slot: Math.min(slot, numTeams), p_team_name: 'My Team',
               }, d => go('#/league/' + d.league_id))}>
-              {busy ? 'Setting up…' : 'Start mock draft'}
+              {busy ? 'Setting up' : 'Start Mock Draft'}
             </button>
           </>
         )}
 
         {kind === 'create' && (
           <>
-            <Field label="League name"><input value={name} onChange={e => setName(e.target.value)} placeholder="The Boys 2026" /></Field>
-            <Field label="Your team name"><input value={teamName} onChange={e => setTeamName(e.target.value)} placeholder="Team name" /></Field>
+            <F label="League name"><input value={name} onChange={e => setName(e.target.value)} /></F>
+            <F label="Your team name"><input value={teamName} onChange={e => setTeamName(e.target.value)} /></F>
             <div className="row2">
-              <Field label="Teams">
-                <select value={numTeams} onChange={e => setNumTeams(+e.target.value)}>
-                  {[4, 6, 8, 10, 12, 14, 16].map(n => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </Field>
-              <Field label="Rounds">
-                <select value={rounds} onChange={e => setRounds(+e.target.value)}>
-                  {[8, 10, 12, 14, 15, 16, 18, 20].map(n => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </Field>
+              <F label="Teams"><select value={numTeams} onChange={e => setNumTeams(+e.target.value)}>
+                {[4, 6, 8, 10, 12, 14, 16].map(n => <option key={n} value={n}>{n}</option>)}</select></F>
+              <F label="Rounds"><select value={rounds} onChange={e => setRounds(+e.target.value)}>
+                {[8, 10, 12, 14, 15, 16, 18, 20].map(n => <option key={n} value={n}>{n}</option>)}</select></F>
             </div>
             <div className="row2">
-              <Field label="Scoring">
-                <select value={scoring} onChange={e => setScoring(e.target.value)}>
-                  <option value="ppr">Full PPR</option><option value="half">Half PPR</option><option value="std">Standard</option>
-                </select>
-              </Field>
-              <Field label="Clock">
-                <select value={secs} onChange={e => setSecs(+e.target.value)}>
-                  {[30, 60, 90, 120, 180, 300].map(n => <option key={n} value={n}>{n}s</option>)}
-                </select>
-              </Field>
+              <F label="Scoring"><select value={scoring} onChange={e => setScoring(e.target.value)}>
+                <option value="ppr">Full PPR</option><option value="half">Half PPR</option><option value="std">Standard</option>
+              </select></F>
+              <F label="Clock"><select value={secs} onChange={e => setSecs(+e.target.value)}>
+                {[30, 60, 90, 120, 180, 300].map(n => <option key={n} value={n}>{n}s</option>)}</select></F>
             </div>
             <button className="btn block big" disabled={busy || !name.trim() || !teamName.trim()}
               onClick={() => run('create_league', {
                 p_name: name, p_num_teams: numTeams, p_rounds: rounds, p_scoring: scoring,
                 p_pick_seconds: secs, p_team_name: teamName,
               }, d => go('#/league/' + d.league_id))}>
-              {busy ? 'Creating…' : 'Create league'}
+              {busy ? 'Creating' : 'Create League'}
             </button>
           </>
         )}
 
         {kind === 'join' && (
           <>
-            <Field label="League code"><input value={code} onChange={e => setCode(e.target.value)} placeholder="8-character code" /></Field>
-            <Field label="Your team name"><input value={teamName} onChange={e => setTeamName(e.target.value)} placeholder="Team name" /></Field>
+            <F label="League code"><input value={code} onChange={e => setCode(e.target.value)} /></F>
+            <F label="Your team name"><input value={teamName} onChange={e => setTeamName(e.target.value)} /></F>
             <button className="btn block big" disabled={busy || !code.trim()}
               onClick={() => run('join_league', { p_join_code: code, p_team_name: teamName },
                 d => go('#/league/' + d.league_id))}>
-              {busy ? 'Joining…' : 'Join league'}
+              {busy ? 'Joining' : 'Join League'}
             </button>
           </>
         )}
 
         {kind === 'recover' && (
           <>
-            <p className="sheet-note">New phone, cleared browser, or lost your team? Your recovery code puts you back on it.</p>
-            <Field label="League code"><input value={code} onChange={e => setCode(e.target.value)} placeholder="8-character code" /></Field>
-            <Field label="Recovery code">
-              <input value={claim} onChange={e => setClaim(e.target.value.toUpperCase())} maxLength={5}
-                placeholder="5 characters" style={{ textTransform: 'uppercase', letterSpacing: '.15em' }} />
-            </Field>
+            <p className="sheet-note">New phone or cleared browser? Your recovery code puts you back on your team.</p>
+            <F label="League code"><input value={code} onChange={e => setCode(e.target.value)} /></F>
+            <F label="Recovery code"><input value={claim} maxLength={5}
+              onChange={e => setClaim(e.target.value.toUpperCase())}
+              style={{ textTransform: 'uppercase', letterSpacing: '.15em' }} /></F>
             <button className="btn block big" disabled={busy || !code.trim() || claim.length < 5}
               onClick={() => run('claim_team', { p_join_code: code, p_claim_code: claim },
                 d => go('#/league/' + d.league_id))}>
-              {busy ? 'Recovering…' : 'Get my team back'}
+              {busy ? 'Recovering' : 'Get My Team Back'}
             </button>
           </>
         )}
@@ -274,6 +208,6 @@ function Sheet({ kind, close, prefillCode, onErr }) {
   )
 }
 
-function Field({ label, children }) {
-  return <div className="field"><label className="microlabel">{label}</label>{children}</div>
-}
+const F = ({ label, children }) => (
+  <div className="field"><label className="microlabel">{label}</label>{children}</div>
+)

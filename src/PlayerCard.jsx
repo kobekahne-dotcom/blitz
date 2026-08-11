@@ -70,14 +70,14 @@ export default function PlayerCard({ p, projKey, myTurn, busy, onDraft, onQueue,
         <div className="pc-hero">
           <div className="pc-shot">
             {imgFail || isDef
-              ? <div className="avatar fallback big"><span className={'pos-' + p.pos}>{p.pos}</span></div>
+              ? <div className="pic" style={{width:66,height:66}}><span className={'ph pos-' + p.pos}>{p.pos}</span></div>
               : <img src={headshot(p.id)} alt="" onError={() => setImgFail(true)} />}
           </div>
           <div className="pc-id">
             <div className="pc-name">{p.name}</div>
             <div className="pc-sub">
               {teamLogo(p.team) && <img className="pc-logo" src={teamLogo(p.team)} alt="" />}
-              <span className={'posbadge pos-bg-' + p.pos}>{p.pos}</span>
+              <span className={'pos pos-' + p.pos}>{p.pos}</span>
               {p.team || 'FA'}{p.numj ? ` · #${p.numj}` : ''}
             </div>
             {p.inj && <div className="pc-inj">{p.inj}</div>}

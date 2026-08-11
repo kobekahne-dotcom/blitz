@@ -17,13 +17,13 @@ function Avatar({ p, size = 40, eager = false }) {
   const src = isDef ? teamLogo(p.team) : headshot(p.id)
   if (failed || !src) {
     return (
-      <div className="avatar fallback" style={{ width: size, height: size }}>
-        <span className={'pos-' + p.pos}>{p.pos}</span>
+      <div className="pic" style={{ width: size, height: size }}>
+        <span className={'ph pos-' + p.pos}>{p.pos}</span>
       </div>
     )
   }
   return (
-    <div className={'avatar' + (isDef ? ' logo' : '')} style={{ width: size, height: size }}>
+    <div className={'pic' + (isDef ? ' logo' : '')} style={{ width: size, height: size }}>
       <img src={src} alt="" width={size} height={size} loading={eager ? "eager" : "lazy"} onError={() => setFailed(true)} />
     </div>
   )
@@ -512,7 +512,7 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
   return (
     <div className="wrap draftwrap">
       {connIssue && <div className="statusband reconnecting">Reconnecting… picks still go through.</div>}
-      {league.is_mock && <div className="mockband">MOCK DRAFT — the computer plays every other team</div>}
+      {league.is_mock && <div className="mockbar">MOCK DRAFT · COMPUTER PLAYS EVERY OTHER TEAM</div>}
 
       {/* ---- clock ---- */}
       {done ? (
@@ -526,14 +526,14 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
       ) : draft.status === 'paused' ? (
         <div className="statusband paused">Paused by the commissioner.</div>
       ) : (
-        <div className={'clockcard' + (myTurn ? ' me' : '')}>
-          <div className="cc-left">
-            <div className="cc-kicker">{myTurn ? "You're on the clock" : 'On the clock'}</div>
-            <div className="cc-team">{teamOnClock ? teamOnClock.name : '—'}</div>
-            <div className="cc-meta">Pick {draft.current_pick} of {totalPicks} · Round {roundOfPick(draft.current_pick, league.num_teams)}</div>
+        <div className={'clock' + (myTurn ? ' me' : '')}>
+          <div className="cl">
+            <div className="kick">{myTurn ? "You're on the clock" : 'On the clock'}</div>
+            <div className="tm">{teamOnClock ? teamOnClock.name : '—'}</div>
+            <div className="mt">Pick {draft.current_pick} of {totalPicks} · Round {roundOfPick(draft.current_pick, league.num_teams)}</div>
           </div>
-          <div className="cc-clock">
-            <div className={'cc-time' + (secsLeft !== null && secsLeft <= 10 ? ' urgent' : '')}>
+          <div>
+            <div className={'cd' + (secsLeft !== null && secsLeft <= 10 ? ' urgent' : '')}>
               {secsLeft != null ? `${Math.floor(secsLeft / 60)}:${String(secsLeft % 60).padStart(2, '0')}` : '—'}
             </div>
           </div>
@@ -541,7 +541,7 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
       )}
 
       {lastPlayer && !done && (
-        <div className="lastpick">
+        <div className="feedline">
           <Avatar p={lastPlayer} size={30} />
           <span><strong>{teamById.get(lastPick.team_id)?.name}</strong> took <strong>{lastPlayer.name}</strong> {lastPlayer.pos} {lastPlayer.team}</span>
           {lastPick.auto && <span className="tag">AUTO</span>}
@@ -551,7 +551,7 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
       {actErr && <div className="err">{actErr}</div>}
 
       {isCommish && !done && (
-        <div className="commishbar">
+        <div className="cbar">
           {draft.status === 'active' && <button className="btn small secondary" disabled={busy} onClick={() => commish('pause_draft')}>Pause</button>}
           {draft.status === 'paused' && <button className="btn small" disabled={busy} onClick={() => commish('resume_draft')}>Resume</button>}
           <button className="btn small secondary" disabled={busy || !picks.length}
@@ -560,7 +560,7 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
         </div>
       )}
 
-      <div className="tabs">
+      <div className="toptabs">
         <button className={tab === 'players' ? 'on' : ''} onClick={() => setTab('players')}>Players</button>
         <button className={tab === 'queue' ? 'on' : ''} onClick={() => setTab('queue')}>Queue{queue.length ? ` ${queue.length}` : ''}</button>
         <button className={tab === 'roster' ? 'on' : ''} onClick={() => setTab('roster')}>My team</button>
@@ -568,14 +568,14 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
       </div>
 
       {tab === 'players' && (
-        <div className="panel">
+        <div>
           {playersErr && <div className="err">Players failed to load: {playersErr}
             <button className="btn small" onClick={() => window.location.reload()}>Reload</button></div>}
           {!players && !playersErr && <div className="loading"><span className="spinner" />Loading players…</div>}
           {players && (
             <>
               {rosterState?.forced && (
-                <div className="forcedband">
+                <div className="warnbar">
                   <strong>Roster lock</strong> — {rosterState.picks_left} pick{rosterState.picks_left === 1 ? '' : 's'} left
                   and you still need {[...new Set(rosterState.missing || [])].join(', ')}
                   {rosterState.flex_need > 0 ? (rosterState.missing?.length ? ' + flex' : 'a flex (RB/WR/TE)') : ''}.
@@ -589,8 +589,8 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
                   <span> · {rosterState.picks_left} picks left</span>
                 </div>
               )}
-              <input className="search" placeholder="Search players…" value={q} onChange={e => setQ(e.target.value)} />
-              <div className="poschips">
+              <div className="searchwrap"><input className="search" placeholder="Search players" value={q} onChange={e => setQ(e.target.value)} /></div>
+              <div className="chips">
                 <button className={posSel.size === 0 ? 'on' : ''} onClick={() => setPosSel(new Set())}>ALL</button>
                 {['QB', 'RB', 'WR', 'TE', 'K', 'DEF'].map(pos => (
                   <button key={pos} className={posSel.has(pos) ? 'on' : ''}
@@ -600,32 +600,32 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
                       return next
                     })}>{pos}</button>
                 ))}
-                {posSel.size > 0 && <button className="clearchip" onClick={() => setPosSel(new Set())}>clear</button>}
+                
               </div>
               <div className="plist">
                 {available.slice(0, 60).map((p, i) => (
-                  <div className="prow tappable" key={p.id} onClick={() => setConfirmP(p)}>
-                    <div className="prank">{p.pos}{p.prank ?? ''}</div>
-                    <Avatar p={p} size={42} eager={i < 15} />
-                    <div className="pinfo">
-                      <div className="pname">
+                  <div className="row tap nopad" key={p.id} onClick={() => setConfirmP(p)}>
+                    <div className="rankcell">{p.pos}{p.prank ?? ''}</div>
+                    <Avatar p={p} size={38} eager={i < 15} />
+                    <div className="who">
+                      <div className="nm">
                         {p.name}
-                        {p.inj && <span className="injdot" title={p.inj}>{p.inj.slice(0, 1)}</span>}
+                        <span className={'pos pos-' + p.pos}>{p.pos}</span>
+                        {p.inj && <span className="qflag">{p.inj.slice(0, 1)}</span>}
                       </div>
-                      <div className="pmeta">
-                        <span className={'posbadge pos-bg-' + p.pos}>{p.pos}</span>
-                        {p.team || 'FA'} · Bye {p.bye ?? '—'}
+                      <div className="sub">
+                        {p.team || 'FA'}<span className="dot">·</span>Bye {p.bye ?? '—'}
+                        <span className="dot">·</span>{statLine(p, projKey)}
                       </div>
-                      <div className="pline">{statLine(p, projKey)}</div>
                     </div>
-                    <div className="pstats">
-                      <div className="pstat"><b>{p[projKey] ?? '—'}</b><span>PROJ</span></div>
-                      <div className="pstat"><b>{p.adp ?? '—'}</b><span>ADP</span></div>
-                    </div>
-                    <button className={'qbtn star' + (queueIds.has(p.id) ? ' on' : '')}
+                    <button className={'rowbtn star' + (queueIds.has(p.id) ? ' on' : '')}
                       onClick={e => { e.stopPropagation(); toggleQueue(p) }} title="Queue">★</button>
-                    <button className="addbtn" disabled={!myTurn || busy} title="Draft him"
+                    <button className="rowbtn add" disabled={!myTurn || busy} title="Draft"
                       onClick={e => { e.stopPropagation(); doPick(p) }}>+</button>
+                    <div className="nums">
+                      <div className="num"><b>{p[projKey] ?? '—'}</b><s>PROJ</s></div>
+                      <div className="num"><b>{p.adp ?? '—'}</b><s>ADP</s></div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -637,8 +637,8 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
       )}
 
       {tab === 'queue' && (
-        <div className="panel">
-          {!queue.length && <div className="empty small"><strong>Queue is empty</strong>
+        <div>
+          {!queue.length && <div className="empty"><strong>Queue is empty</strong>
             <p>Star players on the Players tab. If your clock runs out, autopick takes from here first.</p></div>}
           <div className="plist">
             {queue.map((x, i) => {
@@ -646,14 +646,14 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
               const gone = takenIds.has(x.player_id)
               if (!p) return null
               return (
-                <div className={'prow' + (gone ? ' gone' : '')} key={x.player_id}>
-                  <div className="prank">{i + 1}</div>
+                <div className={'row' + (gone ? ' dim' : '')} key={x.player_id}>
+                  <div className="rankcell">{i + 1}</div>
                   <Avatar p={p} size={38} />
-                  <div className="pinfo">
-                    <div className="pname">{p.name}</div>
-                    <div className="pmeta"><span className={'posbadge pos-bg-' + p.pos}>{p.pos}</span>{p.team || 'FA'}{gone ? ' · taken' : ''}</div>
+                  <div className="who">
+                    <div className="nm">{p.name}<span className={'pos pos-' + p.pos}>{p.pos}</span></div>
+                    <div className="sub">{p.team || 'FA'}{gone ? ' · taken' : ''}</div>
                   </div>
-                  <button className="qbtn" onClick={() => toggleQueue(p)}>✕</button>
+                  <button className="rowbtn" onClick={() => toggleQueue(p)}>✕</button>
                 </div>
               )
             })}
@@ -662,22 +662,22 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
       )}
 
       {tab === 'roster' && (
-        <div className="panel">
+        <div>
           {!myTeam && <div className="hint pad">You're watching this draft — you don't have a team in it.</div>}
-          {myTeam && !myPicks.length && <div className="empty small"><strong>No picks yet</strong><p>Your roster builds here as you draft.</p></div>}
+          {myTeam && !myPicks.length && <div className="empty"><strong>No picks yet</strong><p>Your roster builds here as you draft.</p></div>}
           <div className="plist">
             {myPicks.map(pk => {
               const p = playerById.get(pk.player_id)
               if (!p) return null
               return (
-                <div className="prow" key={pk.id}>
-                  <div className="prank">R{roundOfPick(pk.pick_no, league.num_teams)}</div>
-                  <Avatar p={p} size={42} />
-                  <div className="pinfo">
-                    <div className="pname">{p.name}</div>
-                    <div className="pmeta"><span className={'posbadge pos-bg-' + p.pos}>{p.pos}</span>{p.team || 'FA'} · Bye {p.bye ?? '—'}</div>
+                <div className="row nopad" key={pk.id}>
+                  <div className="rankcell">R{roundOfPick(pk.pick_no, league.num_teams)}</div>
+                  <Avatar p={p} size={38} />
+                  <div className="who">
+                    <div className="nm">{p.name}<span className={'pos pos-' + p.pos}>{p.pos}</span></div>
+                    <div className="sub">{p.team || 'FA'}<span className="dot">·</span>Bye {p.bye ?? '—'}</div>
                   </div>
-                  <div className="pstats"><div className="pstat"><b>{p[projKey] ?? '—'}</b><span>PROJ</span></div></div>
+                  <div className="nums"><div className="num"><b>{p[projKey] ?? '—'}</b><s>PROJ</s></div></div>
                 </div>
               )
             })}
@@ -686,7 +686,7 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
       )}
 
       {tab === 'board' && (
-        <div className="panel nopad">
+        <div>
           <div className="boardscroll">
             <table className="board">
               <thead><tr><th className="rc"></th>
@@ -703,7 +703,7 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
                       const pl = pk ? playerById.get(pk.player_id) : null
                       const cur = !done && pickNo === draft.current_pick
                       return (
-                        <td key={t.id} className={(cur ? 'current ' : '') + (pl ? 'filled pos-bd-' + pl.pos : '')}>
+                        <td key={t.id} className={(cur ? 'current ' : '') + ''}>
                           {pl ? (<>
                             <span className="bname">{pl.name}</span>
                             <span className="bmeta">{pl.pos} · {pl.team || 'FA'}</span>

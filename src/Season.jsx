@@ -9,9 +9,9 @@ function Shot({ p, size = 40 }) {
   const [bad, setBad] = useState(false)
   const isDef = p?.pos === 'DEF'
   const src = isDef ? teamLogo(p.team) : headshot(p.id)
-  if (!p || bad || !src) return <div className="avatar fallback" style={{ width: size, height: size }}>
-    <span className={'pos-' + (p?.pos || '')}>{p?.pos || '?'}</span></div>
-  return <div className={'avatar' + (isDef ? ' logo' : '')} style={{ width: size, height: size }}>
+  if (!p || bad || !src) return <div className="pic" style={{ width: size, height: size }}>
+    <span className={'ph pos-' + (p?.pos || '')}>{p?.pos || '?'}</span></div>
+  return <div className={'pic' + (isDef ? ' logo' : '')} style={{ width: size, height: size }}>
     <img src={src} alt="" onError={() => setBad(true)} /></div>
 }
 
@@ -84,7 +84,7 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
 
   return (
     <div className="wrap">
-      <div className="seasonhead">
+      <div className="sect">
         <div>
           <h1>{league.name}</h1>
           <div className="microlabel">{myTeam?.name} · {league.scoring.toUpperCase()} · {teams.length} teams</div>
@@ -94,7 +94,7 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
 
       {err && <div className="err">{err}</div>}
 
-      <div className="tabs">
+      <div className="toptabs">
         <button className={tab === 'team' ? 'on' : ''} onClick={() => setTab('team')}>My Team</button>
         <button className={tab === 'matchup' ? 'on' : ''} onClick={() => setTab('matchup')}>Matchup</button>
         <button className={tab === 'players' ? 'on' : ''} onClick={() => setTab('players')}>Players</button>
@@ -109,52 +109,52 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
 
       {/* ---------------- MY TEAM ---------------- */}
       {tab === 'team' && (
-        <div className="panel">
+        <div>
           {!myTeam && <div className="hint pad">You don't have a team in this league.</div>}
           {myTeam && lineup === null && <div className="loading"><span className="spinner" />Loading lineup…</div>}
           {myTeam && lineup && (
             <>
-              <div className="lineuphead">
+              <div className="lineuptot">
                 <span className="microlabel">Starting lineup</span>
-                <span className="projtotal">{projTotal.toFixed(1)} <small>PROJ</small></span>
+                <b>{projTotal.toFixed(1)}</b>
               </div>
               {sel && <div className="needline">Tap another player to swap.</div>}
 
               {sortSlots(starters).map(l => {
                 const p = byId.get(l.player_id)
                 return (
-                  <div className={'lrow' + (sel === l.player_id ? ' sel' : '')} key={l.player_id}
+                  <div className={'row tap nopad' + (sel === l.player_id ? ' sel' : '')} key={l.player_id}
                     onClick={() => tapPlayer(l)}>
-                    <div className="lslot">{l.slot}</div>
+                    <div className="slotpill">{l.slot}</div>
                     <Shot p={p} size={38} />
-                    <div className="pinfo" onClick={e => { e.stopPropagation(); p && onOpenPlayer(p) }}>
-                      <div className="pname">{p?.name || l.player_id}</div>
-                      <div className="pmeta">
-                        <span className={'posbadge pos-bg-' + p?.pos}>{p?.pos}</span>
+                    <div className="who" onClick={e => { e.stopPropagation(); p && onOpenPlayer(p) }}>
+                      <div className="nm">{p?.name || l.player_id}</div>
+                      <div className="sub">
+                        <span className={'pos pos-' + p?.pos}>{p?.pos}</span>
                         {p?.team || 'FA'} · Bye {p?.bye ?? '—'}
                       </div>
                     </div>
-                    <div className="pstats"><div className="pstat"><b>{p?.[projKey] ?? '—'}</b><span>PROJ</span></div></div>
+                    <div className="nums"><div className="num"><b>{p?.[projKey] ?? '—'}</b><s>PROJ</s></div></div>
                   </div>
                 )
               })}
 
-              <div className="lineuphead mt14"><span className="microlabel">Bench</span></div>
+              <div className="sect"><span className="microlabel">Bench</span></div>
               {bench.map(l => {
                 const p = byId.get(l.player_id)
                 return (
-                  <div className={'lrow bench' + (sel === l.player_id ? ' sel' : '')} key={l.player_id}
+                  <div className={'row tap nopad' + (sel === l.player_id ? ' sel' : '')} key={l.player_id}
                     onClick={() => tapPlayer(l)}>
-                    <div className="lslot">BN</div>
+                    <div className="slotpill">BN</div>
                     <Shot p={p} size={38} />
-                    <div className="pinfo" onClick={e => { e.stopPropagation(); p && onOpenPlayer(p) }}>
-                      <div className="pname">{p?.name || l.player_id}</div>
-                      <div className="pmeta">
-                        <span className={'posbadge pos-bg-' + p?.pos}>{p?.pos}</span>
+                    <div className="who" onClick={e => { e.stopPropagation(); p && onOpenPlayer(p) }}>
+                      <div className="nm">{p?.name || l.player_id}</div>
+                      <div className="sub">
+                        <span className={'pos pos-' + p?.pos}>{p?.pos}</span>
                         {p?.team || 'FA'} · Bye {p?.bye ?? '—'}
                       </div>
                     </div>
-                    <div className="pstats"><div className="pstat"><b>{p?.[projKey] ?? '—'}</b><span>PROJ</span></div></div>
+                    <div className="nums"><div className="num"><b>{p?.[projKey] ?? '—'}</b><s>PROJ</s></div></div>
                   </div>
                 )
               })}
@@ -166,21 +166,21 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
 
       {/* ---------------- MATCHUP ---------------- */}
       {tab === 'matchup' && (
-        <div className="panel">
+        <div>
           {matchups === null && <div className="loading"><span className="spinner" />Loading schedule…</div>}
           {matchups && !myMatchup && <div className="hint pad">No matchup scheduled for week {week}.</div>}
           {myMatchup && (
             <>
-              <div className="vs">
-                <div className="vsside">
-                  <div className="vsname">{myTeam?.name}</div>
-                  <div className="vsscore">{projTotal.toFixed(1)}</div>
+              <div className="mhead">
+                <div className="mside">
+                  <div className="mname">{myTeam?.name}</div>
+                  <div className="mscore">{projTotal.toFixed(1)}</div>
                   <div className="microlabel">projected</div>
                 </div>
-                <div className="vsmid">VS</div>
-                <div className="vsside">
-                  <div className="vsname">{oppId ? teamById.get(oppId)?.name : 'BYE'}</div>
-                  <div className="vsscore">
+                <div className="mvs">VS</div>
+                <div className="mside">
+                  <div className="mname">{oppId ? teamById.get(oppId)?.name : 'BYE'}</div>
+                  <div className="mscore">
                     {oppId ? rosterOf(oppId).slice(0, 9).reduce((s, p) => s + (p[projKey] || 0), 0).toFixed(1) : '—'}
                   </div>
                   <div className="microlabel">projected</div>
@@ -192,16 +192,16 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
               </div>
               {oppId && (
                 <>
-                  <div className="microlabel mb8">{teamById.get(oppId)?.name} roster</div>
+                  <div className="sect"><h2>{teamById.get(oppId)?.name} roster</h2></div>
                   {rosterOf(oppId).map(p => (
-                    <div className="lrow" key={p.id} onClick={() => onOpenPlayer(p)}>
-                      <div className="lslot">{p.pos}</div>
+                    <div className="row tap nopad" key={p.id} onClick={() => onOpenPlayer(p)}>
+                      <div className="slotpill">{p.pos}</div>
                       <Shot p={p} size={34} />
-                      <div className="pinfo">
-                        <div className="pname">{p.name}</div>
-                        <div className="pmeta">{p.team || 'FA'} · Bye {p.bye ?? '—'}</div>
+                      <div className="who">
+                        <div className="nm">{p.name}</div>
+                        <div className="sub">{p.team || 'FA'} · Bye {p.bye ?? '—'}</div>
                       </div>
-                      <div className="pstats"><div className="pstat"><b>{p[projKey] ?? '—'}</b><span>PROJ</span></div></div>
+                      <div className="nums"><div className="num"><b>{p[projKey] ?? '—'}</b><s>PROJ</s></div></div>
                     </div>
                   ))}
                 </>
@@ -218,19 +218,19 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
 
       {/* ---------------- LEAGUE ---------------- */}
       {tab === 'league' && (
-        <div className="panel">
-          <div className="microlabel mb8">Standings</div>
+        <div>
+          <div className="sect"><h2>Standings</h2></div>
           {teams.map((t, i) => {
             const roster = rosterOf(t.id)
             const total = roster.slice(0, 9).reduce((s, p) => s + (p[projKey] || 0), 0)
             return (
-              <div className="lrow" key={t.id}>
-                <div className="lslot">{i + 1}</div>
-                <div className="pinfo">
-                  <div className="pname">{t.name}{t.owner_uid === uid ? ' (you)' : ''}</div>
-                  <div className="pmeta">0–0 · {roster.length} players</div>
+              <div className="row nopad" key={t.id}>
+                <div className="slotpill">{i + 1}</div>
+                <div className="who">
+                  <div className="nm">{t.name}{t.owner_uid === uid ? ' (you)' : ''}</div>
+                  <div className="sub">0–0 · {roster.length} players</div>
                 </div>
-                <div className="pstats"><div className="pstat"><b>{total.toFixed(0)}</b><span>PROJ</span></div></div>
+                <div className="nums"><div className="num"><b>{total.toFixed(0)}</b><s>PROJ</s></div></div>
               </div>
             )
           })}
@@ -261,10 +261,10 @@ function FreeAgents({ players, allPicks, projKey, onOpenPlayer }) {
   }, [players, taken, posSel, q, projKey])
 
   return (
-    <div className="panel">
-      <div className="microlabel mb8">Free agents — {list.length} available</div>
-      <input className="search" placeholder="Search free agents…" value={q} onChange={e => setQ(e.target.value)} />
-      <div className="poschips">
+    <div>
+      <div className="sect"><h2>Free agents — {list.length} available</h2></div>
+      <input className="search" placeholder="Search free agents" value={q} onChange={e => setQ(e.target.value)} />
+      <div className="chips">
         <button className={posSel.size === 0 ? 'on' : ''} onClick={() => setPosSel(new Set())}>ALL</button>
         {['QB', 'RB', 'WR', 'TE', 'K', 'DEF'].map(pos => (
           <button key={pos} className={posSel.has(pos) ? 'on' : ''}
@@ -274,14 +274,14 @@ function FreeAgents({ players, allPicks, projKey, onOpenPlayer }) {
         ))}
       </div>
       {list.slice(0, 60).map(p => (
-        <div className="lrow" key={p.id} onClick={() => onOpenPlayer(p)}>
-          <div className="lslot">{p.pos}{p.prank ?? ''}</div>
+        <div className="row tap nopad" key={p.id} onClick={() => onOpenPlayer(p)}>
+          <div className="slotpill">{p.pos}{p.prank ?? ''}</div>
           <Shot p={p} size={38} />
-          <div className="pinfo">
-            <div className="pname">{p.name}</div>
-            <div className="pmeta">{p.team || 'FA'} · Bye {p.bye ?? '—'}</div>
+          <div className="who">
+            <div className="nm">{p.name}</div>
+            <div className="sub">{p.team || 'FA'} · Bye {p.bye ?? '—'}</div>
           </div>
-          <div className="pstats"><div className="pstat"><b>{p[projKey] ?? '—'}</b><span>PROJ</span></div></div>
+          <div className="nums"><div className="num"><b>{p[projKey] ?? '—'}</b><s>PROJ</s></div></div>
         </div>
       ))}
       <div className="notice mt14">
