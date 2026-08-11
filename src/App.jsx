@@ -339,7 +339,8 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch }) {
   const [playersErr, setPlayersErr] = useState(null)
   const [tab, setTab] = useState('players')
   const [q, setQ] = useState('')
-  const [posFilter, setPosFilter] = useState('ALL')
+  const [posSel, setPosSel] = useState(new Set())   // empty = all
+  const [rosterState, setRosterState] = useState(null)
   const [confirmP, setConfirmP] = useState(null)
   const [actErr, setActErr] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -369,6 +370,12 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch }) {
     })
     return () => { live = false }
   }, [])
+
+  useEffect(() => {
+    if (!myTeam) return
+    supabase.rpc('required_left', { p_team_id: myTeam.id })
+      .then(({ data }) => setRosterState(data || null)).catch(() => {})
+  }, [myTeam?.id, picks.length])
 
   const loadQueue = useCallback(async () => {
     if (!myTeam) return
@@ -429,13 +436,13 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch }) {
   const available = useMemo(() => {
     if (!players) return []
     let list = players.filter(p => !takenIds.has(p.id))
-    if (posFilter !== 'ALL') list = list.filter(p => p.pos === posFilter)
+    if (posSel.size) list = list.filter(p => posSel.has(p.pos))
     if (q.trim()) {
       const s = q.trim().toLowerCase()
       list = list.filter(p => p.name.toLowerCase().includes(s) || (p.team || '').toLowerCase().includes(s))
     }
     return list.sort((a, b) => (a.adp ?? 9999) - (b.adp ?? 9999) || (b[projKey] ?? 0) - (a[projKey] ?? 0))
-  }, [players, takenIds, posFilter, q, projKey])
+  }, [players, takenIds, posSel, q, projKey])
 
   const doPick = async (p) => {
     if (!myTeam) return
@@ -529,11 +536,33 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch }) {
           {!players && !playersErr && <div className="loading"><span className="spinner" />Loading players…</div>}
           {players && (
             <>
+              {rosterState?.forced && (
+                <div className="forcedband">
+                  <strong>Roster lock</strong> — {rosterState.picks_left} pick{rosterState.picks_left === 1 ? '' : 's'} left
+                  and you still need {[...new Set(rosterState.missing || [])].join(', ')}
+                  {rosterState.flex_need > 0 ? (rosterState.missing?.length ? ' + flex' : 'a flex (RB/WR/TE)') : ''}.
+                  Only those can be drafted now.
+                </div>
+              )}
+              {rosterState && !rosterState.forced && rosterState.owed > 0 && (
+                <div className="needline">
+                  Still to fill: {[...new Set(rosterState.missing || [])].join(', ') || '—'}
+                  {rosterState.flex_need > 0 ? ' + flex' : ''}
+                  <span> · {rosterState.picks_left} picks left</span>
+                </div>
+              )}
               <input className="search" placeholder="Search players…" value={q} onChange={e => setQ(e.target.value)} />
               <div className="poschips">
-                {['ALL', 'QB', 'RB', 'WR', 'TE', 'K', 'DEF'].map(p => (
-                  <button key={p} className={posFilter === p ? 'on' : ''} onClick={() => setPosFilter(p)}>{p}</button>
+                <button className={posSel.size === 0 ? 'on' : ''} onClick={() => setPosSel(new Set())}>ALL</button>
+                {['QB', 'RB', 'WR', 'TE', 'K', 'DEF'].map(pos => (
+                  <button key={pos} className={posSel.has(pos) ? 'on' : ''}
+                    onClick={() => setPosSel(prev => {
+                      const next = new Set(prev)
+                      next.has(pos) ? next.delete(pos) : next.add(pos)
+                      return next
+                    })}>{pos}</button>
                 ))}
+                {posSel.size > 0 && <button className="clearchip" onClick={() => setPosSel(new Set())}>clear</button>}
               </div>
               <div className="plist">
                 {available.slice(0, 60).map((p, i) => (
