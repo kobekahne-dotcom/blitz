@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { supabase, ensureSession } from './supabase.js'
+import { supabase, ensureSession, fetchAllPlayers } from './supabase.js'
 import { slotForPick, roundOfPick, pickInRound } from './snake.js'
 import Home from './Home.jsx'
 import PlayerCard from './PlayerCard.jsx'
@@ -216,7 +216,7 @@ function SeasonWrap({ league, teams, draft, uid, goDraft }) {
   const projKey = league.scoring === 'ppr' ? 'ppr' : league.scoring === 'half' ? 'half' : 'std'
 
   useEffect(() => {
-    supabase.from('players').select('*').then(({ data }) => setPlayers(data || []))
+    fetchAllPlayers().then(setPlayers).catch(() => setPlayers([]))
   }, [])
 
   if (!players) return <div className="loading"><span className="spinner" />Loading…</div>
@@ -397,10 +397,9 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
 
   useEffect(() => {
     let live = true
-    supabase.from('players').select('*').then(({ data, error }) => {
-      if (!live) return
-      if (error) setPlayersErr(error.message); else setPlayers(data)
-    })
+    fetchAllPlayers()
+      .then(rows => { if (live) setPlayers(rows) })
+      .catch(e => { if (live) setPlayersErr(e.message) })
     return () => { live = false }
   }, [])
 

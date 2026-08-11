@@ -18,3 +18,21 @@ export async function ensureSession() {
   if (error) throw new Error('Sign-in failed: ' + error.message)
   return data.session
 }
+
+/* PostgREST caps a single select at 1000 rows, and the player pool is
+   bigger than that. Page through it so nobody silently disappears. */
+export async function fetchAllPlayers() {
+  const PAGE = 1000
+  let from = 0, all = []
+  for (;;) {
+    const { data, error } = await supabase
+      .from('players').select('*')
+      .order('ppr', { ascending: false })
+      .range(from, from + PAGE - 1)
+    if (error) throw new Error(error.message)
+    all = all.concat(data)
+    if (!data || data.length < PAGE) break
+    from += PAGE
+  }
+  return all
+}
