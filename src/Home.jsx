@@ -131,7 +131,7 @@ function Sheet({ kind, close, prefillCode }) {
   const [name, setName] = useState('')
   const [teamName, setTeamName] = useState('')
   const [numTeams, setNumTeams] = useState(10)
-  const [rounds, setRounds] = useState(15)
+  const rounds = 15   // BLITZ drafts are always 15 rounds
   const [scoring, setScoring] = useState('ppr')
   const [secs, setSecs] = useState(90)
   const [slot, setSlot] = useState(1)
@@ -166,8 +166,7 @@ function Sheet({ kind, close, prefillCode }) {
                 {Array.from({ length: numTeams }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}</option>)}</select></F>
             </div>
             <div className="row2">
-              <F label="Rounds"><select value={rounds} onChange={e => setRounds(+e.target.value)}>
-                {[8, 10, 12, 14, 15, 16].map(n => <option key={n} value={n}>{n}</option>)}</select></F>
+              <F label="Rounds"><div className="fixedval">15</div></F>
               <F label="Scoring"><select value={scoring} onChange={e => setScoring(e.target.value)}>
                 <option value="ppr">Full PPR</option><option value="half">Half PPR</option><option value="std">Standard</option>
               </select></F>
@@ -178,7 +177,7 @@ function Sheet({ kind, close, prefillCode }) {
               <option value={600}>10 minutes</option></select></F>
             <button className="btn block big" disabled={busy}
               onClick={() => run('create_mock_draft', {
-                p_num_teams: numTeams, p_rounds: rounds, p_scoring: scoring,
+                p_num_teams: numTeams, p_rounds: 15, p_scoring: scoring,
                 p_pick_seconds: secs, p_my_slot: Math.min(slot, numTeams), p_team_name: 'My Team',
               }, d => go('#/league/' + d.league_id))}>
               {busy ? 'Setting up' : 'Start Mock Draft'}
@@ -193,8 +192,7 @@ function Sheet({ kind, close, prefillCode }) {
             <div className="row2">
               <F label="Teams"><select value={numTeams} onChange={e => setNumTeams(+e.target.value)}>
                 {[4, 6, 8, 10, 12, 14, 16].map(n => <option key={n} value={n}>{n}</option>)}</select></F>
-              <F label="Rounds"><select value={rounds} onChange={e => setRounds(+e.target.value)}>
-                {[8, 10, 12, 14, 15, 16, 18, 20].map(n => <option key={n} value={n}>{n}</option>)}</select></F>
+              <F label="Rounds"><div className="fixedval">15</div></F>
             </div>
             <div className="row2">
               <F label="Scoring"><select value={scoring} onChange={e => setScoring(e.target.value)}>
@@ -212,7 +210,7 @@ function Sheet({ kind, close, prefillCode }) {
             </label>
             <button className="btn block big" disabled={busy || !name.trim() || !teamName.trim()}
               onClick={() => run('create_league', {
-                p_name: name, p_num_teams: numTeams, p_rounds: rounds, p_scoring: scoring,
+                p_name: name, p_num_teams: numTeams, p_rounds: 15, p_scoring: scoring,
                 p_pick_seconds: secs, p_team_name: teamName,
               }, async d => {
                 if (flexTE) await supabase.rpc('set_flex_te', { p_league_id: d.league_id, p_on: true })
