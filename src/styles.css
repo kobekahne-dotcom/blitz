@@ -33,16 +33,47 @@ input, select { font-family: inherit; font-size: 15px; }
 }
 
 /* ---------- chrome ---------- */
+/* Launched from the home screen there is no browser chrome, so the navy bar
+   has to paint under the status bar itself or the notch area goes white. */
 .topbar {
   background: var(--navy); color: #fff;
   padding: 10px 14px; display: flex; align-items: center; gap: 10px;
   position: sticky; top: 0; z-index: 40;
+  padding-top: calc(10px + env(safe-area-inset-top));
+  padding-left: calc(14px + env(safe-area-inset-left));
+  padding-right: calc(14px + env(safe-area-inset-right));
+}
+body { padding-bottom: env(safe-area-inset-bottom); }
+.wrap {
+  padding-left: calc(14px + env(safe-area-inset-left));
+  padding-right: calc(14px + env(safe-area-inset-right));
+}
+/* standalone mode: no browser back button, so kill accidental text selection
+   and the tap-highlight flash that makes a web app feel like a web page */
+@media (display-mode: standalone) {
+  body { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  input, textarea { -webkit-user-select: text; user-select: text; }
 }
 .topbar .logo { font-weight: 800; font-size: 18px; letter-spacing: -0.02em; }
 .topbar .logo span { color: #7FC4E8; }
 .topbar .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 
 .wrap { width: 100%; max-width: 1100px; margin: 0 auto; padding: 14px; flex: 1; }
+
+/* add-to-home-screen bar */
+.installbar {
+  display: flex; align-items: center; gap: 10px;
+  background: #fff; border-bottom: 1px solid var(--line);
+  padding: 10px 14px;
+}
+.installbar img { border-radius: 8px; flex: 0 0 auto; }
+.installbar .itext { flex: 1; min-width: 0; font-size: 13px; line-height: 1.35; }
+.installbar .itext strong { display: block; font-size: 13.5px; }
+.installbar .itext span { color: var(--dim); }
+.installbar .ix {
+  background: none; border: 0; color: var(--dim); font-size: 16px;
+  padding: 8px; min-width: 38px; min-height: 38px; flex: 0 0 auto;
+}
 
 .card {
   background: var(--card); border: 1px solid var(--line);

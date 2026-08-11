@@ -19,6 +19,53 @@ function useHashRoute() {
 }
 const go = (h) => { window.location.hash = h }
 
+/* ============================================================
+   "Add to home screen" prompt. Android gets a real install button;
+   iOS has no API for it, so it gets the actual tap-by-tap instruction.
+   ============================================================ */
+function InstallPrompt() {
+  const [deferred, setDeferred] = useState(null)
+  const [show, setShow] = useState(false)
+
+  const standalone = window.matchMedia('(display-mode: standalone)').matches
+    || window.navigator.standalone === true
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
+  const isAndroid = /android/i.test(navigator.userAgent)
+
+  useEffect(() => {
+    if (standalone || localStorage.getItem('blitz-install-dismissed')) return
+    const onPrompt = (e) => { e.preventDefault(); setDeferred(e); setShow(true) }
+    window.addEventListener('beforeinstallprompt', onPrompt)
+    // iOS never fires that event — show the manual instruction instead
+    if (isIOS) setShow(true)
+    return () => window.removeEventListener('beforeinstallprompt', onPrompt)
+  }, [standalone, isIOS])
+
+  if (!show || standalone) return null
+
+  const dismiss = () => { localStorage.setItem('blitz-install-dismissed', '1'); setShow(false) }
+  const install = async () => {
+    if (!deferred) return
+    deferred.prompt()
+    await deferred.userChoice
+    setDeferred(null); setShow(false)
+  }
+
+  return (
+    <div className="installbar">
+      <img src="/blitz/icon-192.png" alt="" width="38" height="38" />
+      <div className="itext">
+        <strong>Add BLITZ to your home screen</strong>
+        {isIOS
+          ? <span>Tap the Share button <b>⎋</b> below, then <b>Add to Home Screen</b>.</span>
+          : <span>Opens full screen like a real app — no browser bars during the draft.</span>}
+      </div>
+      {!isIOS && deferred && <button className="btn small" onClick={install}>Install</button>}
+      <button className="ix" onClick={dismiss} aria-label="Dismiss">✕</button>
+    </div>
+  )
+}
+
 export default function App() {
   const hash = useHashRoute()
   const [session, setSession] = useState(null)
@@ -56,6 +103,7 @@ export default function App() {
         <div className="logo" style={{ cursor: 'pointer' }} onClick={() => go('#/')}>BL<span>I</span>TZ</div>
         <div className="microlabel" style={{ color: 'rgba(255,255,255,0.7)' }}>Draft Room · 2026</div>
       </div>
+      <InstallPrompt />
       {body}
     </>
   )
