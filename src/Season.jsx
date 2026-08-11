@@ -3,6 +3,17 @@ import { supabase } from './supabase.js'
 
 const headshot = id => `https://sleepercdn.com/content/nfl/players/${id}.jpg`
 const teamLogo = t => t ? `https://sleepercdn.com/images/team_logos/nfl/${t.toLowerCase()}.png` : null
+
+/* Projections from Sleeper are FULL SEASON totals. A weekly lineup needs
+   per-game numbers, so divide by that player's projected games played. */
+const perGame = (p, key) => {
+  if (!p) return null
+  const season = p[key]
+  if (season == null) return null
+  const gp = (p.projd && p.projd.gp) || 17
+  return Math.round((season / gp) * 10) / 10
+}
+
 const SLOT_ORDER = ['QB', 'RB', 'WR', 'TE', 'FLEX', 'K', 'DEF', 'BN']
 
 function Shot({ p, size = 40 }) {
@@ -58,7 +69,7 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
   const sortSlots = arr => [...arr].sort((a, b) =>
     SLOT_ORDER.indexOf(a.slot) - SLOT_ORDER.indexOf(b.slot))
 
-  const projTotal = starters.reduce((s, l) => s + (byId.get(l.player_id)?.[projKey] || 0), 0)
+  const projTotal = starters.reduce((s, l) => s + (perGame(byId.get(l.player_id), projKey) || 0), 0)
 
   const myMatchup = (matchups || []).find(m =>
     m.week === week && (m.home_team_id === myTeam?.id || m.away_team_id === myTeam?.id))
@@ -115,7 +126,7 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
           {myTeam && lineup && (
             <>
               <div className="lineuptot">
-                <span className="microlabel">Starting lineup</span>
+                <span className="microlabel">Starting lineup · projected this week</span>
                 <b>{projTotal.toFixed(1)}</b>
               </div>
               {sel && <div className="needline">Tap another player to swap.</div>}
@@ -134,7 +145,7 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
                         {p?.team || 'FA'} · Bye {p?.bye ?? '—'}
                       </div>
                     </div>
-                    <div className="nums"><div className="num"><b>{p?.[projKey] ?? '—'}</b><s>PROJ</s></div></div>
+                    <div className="nums"><div className="num"><b>{perGame(p, projKey) ?? '—'}</b><s>PROJ</s></div></div>
                   </div>
                 )
               })}
@@ -154,7 +165,7 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
                         {p?.team || 'FA'} · Bye {p?.bye ?? '—'}
                       </div>
                     </div>
-                    <div className="nums"><div className="num"><b>{p?.[projKey] ?? '—'}</b><s>PROJ</s></div></div>
+                    <div className="nums"><div className="num"><b>{perGame(p, projKey) ?? '—'}</b><s>PROJ</s></div></div>
                   </div>
                 )
               })}
@@ -181,7 +192,7 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
                 <div className="mside">
                   <div className="mname">{oppId ? teamById.get(oppId)?.name : 'BYE'}</div>
                   <div className="mscore">
-                    {oppId ? rosterOf(oppId).slice(0, 9).reduce((s, p) => s + (p[projKey] || 0), 0).toFixed(1) : '—'}
+                    {oppId ? rosterOf(oppId).slice(0, 9).reduce((s, p) => s + (perGame(p, projKey) || 0), 0).toFixed(1) : '—'}
                   </div>
                   <div className="microlabel">projected</div>
                 </div>
@@ -201,7 +212,7 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
                         <div className="nm">{p.name}</div>
                         <div className="sub">{p.team || 'FA'} · Bye {p.bye ?? '—'}</div>
                       </div>
-                      <div className="nums"><div className="num"><b>{p[projKey] ?? '—'}</b><s>PROJ</s></div></div>
+                      <div className="nums"><div className="num"><b>{perGame(p, projKey) ?? '—'}</b><s>PROJ</s></div></div>
                     </div>
                   ))}
                 </>
@@ -222,7 +233,7 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
           <div className="sect"><h2>Standings</h2></div>
           {teams.map((t, i) => {
             const roster = rosterOf(t.id)
-            const total = roster.slice(0, 9).reduce((s, p) => s + (p[projKey] || 0), 0)
+            const total = roster.slice(0, 9).reduce((s, p) => s + (perGame(p, projKey) || 0), 0)
             return (
               <div className="row nopad" key={t.id}>
                 <div className="slotpill">{i + 1}</div>
@@ -281,7 +292,7 @@ function FreeAgents({ players, allPicks, projKey, onOpenPlayer }) {
             <div className="nm">{p.name}</div>
             <div className="sub">{p.team || 'FA'} · Bye {p.bye ?? '—'}</div>
           </div>
-          <div className="nums"><div className="num"><b>{p[projKey] ?? '—'}</b><s>PROJ</s></div></div>
+          <div className="nums"><div className="num"><b>{perGame(p, projKey) ?? '—'}</b><s>PROJ</s></div></div>
         </div>
       ))}
       <div className="notice mt14">
