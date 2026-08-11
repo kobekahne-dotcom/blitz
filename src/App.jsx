@@ -13,6 +13,7 @@ const teamLogo = t => t ? `https://sleepercdn.com/images/team_logos/nfl/${t.toLo
 
 function Avatar({ p, size = 40, eager = false }) {
   const [failed, setFailed] = useState(false)
+  if (!p) return <div className="pic" style={{ width: size, height: size }}><span className="ph">?</span></div>
   const isDef = p.pos === 'DEF'
   const src = isDef ? teamLogo(p.team) : headshot(p.id)
   if (failed || !src) {
@@ -370,7 +371,7 @@ function statLine(p, projKey) {
    visible so you can see what you still owe. */
 function buildSlots(roster, rosterCfg, projKey) {
   const cfg = rosterCfg || { QB:1, RB:2, WR:2, TE:1, FLEX:1, K:1, DEF:1 }
-  const pool = [...roster].sort((a, b) => (b[projKey] || 0) - (a[projKey] || 0))
+  const pool = [...roster].filter(Boolean).sort((a, b) => (b[projKey] || 0) - (a[projKey] || 0))
   const used = new Set()
   const out = []
   for (const pos of ['QB','RB','WR','TE','K','DEF']) {
@@ -385,9 +386,25 @@ function buildSlots(roster, rosterCfg, projKey) {
     if (p) used.add(p.id)
     out.push({ slot: 'FLEX', player: p || null })
   }
-  for (const p of pool) if (!used.has(p.id)) out.push({ slot: 'BN', player: p })
+  for (const p of pool) if (p && !used.has(p.id)) out.push({ slot: 'BN', player: p })
   return out
 }
+
+
+/* Single-select position filters, with the combo slots a real fantasy app
+   has. Tapping a chip SWITCHES to it — it never stacks with the last one. */
+const POS_FILTERS = [
+  { k: 'ALL',  label: 'ALL',   pos: null },
+  { k: 'QB',   label: 'QB',    pos: ['QB'] },
+  { k: 'RB',   label: 'RB',    pos: ['RB'] },
+  { k: 'WR',   label: 'WR',    pos: ['WR'] },
+  { k: 'RBWR', label: 'RB/WR', pos: ['RB', 'WR'] },
+  { k: 'TE',   label: 'TE',    pos: ['TE'] },
+  { k: 'FLEX', label: 'FLEX',  pos: ['RB', 'WR', 'TE'] },
+  { k: 'K',    label: 'K',     pos: ['K'] },
+  { k: 'DEF',  label: 'DEF',   pos: ['DEF'] },
+]
+const posOf = k => (POS_FILTERS.find(f => f.k === k) || POS_FILTERS[0]).pos
 
 const BOT_CAP = { QB: 2, RB: 6, WR: 7, TE: 2, K: 1, DEF: 1 }
 
@@ -396,7 +413,7 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
   const [playersErr, setPlayersErr] = useState(null)
   const [tab, setTab] = useState('players')
   const [q, setQ] = useState('')
-  const [posSel, setPosSel] = useState(new Set())   // empty = all
+  const [posKey, setPosKey] = useState('ALL')
   const [shown, setShown] = useState(75)
   const [rosterState, setRosterState] = useState(null)
   const [confirmP, setConfirmP] = useState(null)
@@ -457,12 +474,25 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
         const pl = playerById.get(pk.player_id)
         if (pl) counts[pl.pos] = (counts[pl.pos] || 0) + 1
       }
-      const round = roundOfPick(draft.current_pick, league.num_teams)
-      const late = round > league.rounds - 3
+      const myPickCount = mine.length
+      const roundsLeft = league.rounds - myPickCount
+      const roundNo = myPickCount + 1
+      const late = roundsLeft <= 2                       // kicker/defense window
+      const midlate = roundNo >= Math.max(3, Math.ceil(league.rounds * 0.66))
+      const cfg = league.roster || { QB:1, RB:2, WR:2, TE:1, FLEX:1, K:1, DEF:1 }
+      const allowed = pos => {
+        const have = counts[pos] || 0
+        if (pos === 'QB') return have < (cfg.QB ?? 1) || (midlate && have < 2)
+        if (pos === 'TE') return have < (cfg.TE ?? 1) || (midlate && have < 2)
+        if (pos === 'RB') return have < 6
+        if (pos === 'WR') return have < 7
+        if (pos === 'K')   return late && have < (cfg.K ?? 1)
+        if (pos === 'DEF') return late && have < (cfg.DEF ?? 1)
+        return false
+      }
       const cands = players
         .filter(p => !takenIds.has(p.id))
-        .filter(p => (counts[p.pos] || 0) < (BOT_CAP[p.pos] ?? 99))
-        .filter(p => late || (p.pos !== 'K' && p.pos !== 'DEF'))
+        .filter(p => allowed(p.pos))
         .sort((a, b) => (a.adp ?? 9999) - (b.adp ?? 9999) || (b[projKey] ?? 0) - (a[projKey] ?? 0))
       const pool = cands.slice(0, 3)
       const choice = pool[Math.floor(Math.random() * pool.length)] || cands[0]
@@ -477,14 +507,17 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
   }, [league.is_mock, draft.current_pick, draft.status, done, players, teamOnClock?.id, uid])
 
   /* ---- server-clock autopick heartbeat (real leagues) ---- */
+  // Server-clock autopick. This runs in mocks too — when YOUR clock hits
+  // zero somebody has to pick for you, and only the server can be trusted
+  // with the deadline.
   useEffect(() => {
-    if (draft.status !== 'active' || league.is_mock) return
+    if (draft.status !== 'active') return
     const iv = setInterval(() => {
       supabase.rpc('autopick_if_expired', { p_draft_id: draft.id })
         .then(({ data }) => { if (data?.fired) refetch() }).catch(() => {})
-    }, 5000)
+    }, 3000)
     return () => clearInterval(iv)
-  }, [draft.id, draft.status, league.is_mock, refetch])
+  }, [draft.id, draft.status, refetch])
 
   useEffect(() => { const iv = setInterval(() => setNow(Date.now()), 500); return () => clearInterval(iv) }, [])
   const deadlineMs = draft.pick_deadline ? new Date(draft.pick_deadline).getTime() : null
@@ -493,14 +526,15 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
   const available = useMemo(() => {
     if (!players) return []
     let list = players.filter(p => !takenIds.has(p.id))
-    if (posSel.size) list = list.filter(p => posSel.has(p.pos))
+    const pf = posOf(posKey)
+    if (pf) list = list.filter(p => pf.includes(p.pos))
     if (q.trim()) {
       const s = q.trim().toLowerCase()
       list = list.filter(p => p.name.toLowerCase().includes(s) || (p.team || '').toLowerCase().includes(s))
     }
     return list.sort((a, b) => (a.adp ?? 9999) - (b.adp ?? 9999) || (b[projKey] ?? 0) - (a[projKey] ?? 0))
-  }, [players, takenIds, posSel, q, projKey])
-  useEffect(() => { setShown(75) }, [posSel, q])
+  }, [players, takenIds, posKey, q, projKey])
+  useEffect(() => { setShown(75) }, [posKey, q])
 
   const doPick = async (p) => {
     if (!myTeam) return
@@ -617,16 +651,10 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
               )}
               <div className="searchwrap"><input className="search" placeholder="Search players" value={q} onChange={e => setQ(e.target.value)} /></div>
               <div className="chips">
-                <button className={posSel.size === 0 ? 'on' : ''} onClick={() => setPosSel(new Set())}>ALL</button>
-                {['QB', 'RB', 'WR', 'TE', 'K', 'DEF'].map(pos => (
-                  <button key={pos} className={posSel.has(pos) ? 'on' : ''}
-                    onClick={() => setPosSel(prev => {
-                      const next = new Set(prev)
-                      next.has(pos) ? next.delete(pos) : next.add(pos)
-                      return next
-                    })}>{pos}</button>
+                {POS_FILTERS.map(f => (
+                  <button key={f.k} className={posKey === f.k ? 'on' : ''}
+                    onClick={() => setPosKey(f.k)}>{f.label}</button>
                 ))}
-                
               </div>
               <div className="plist">
                 {available.slice(0, shown).map((p, i) => (
@@ -636,7 +664,7 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
                     <div className="who">
                       <div className="nm">
                         {p.name}
-                        <span className={'pos pos-' + p.pos}>{p.pos}</span>
+                        <span className={'posbadge bg-' + p.pos}>{p.pos}</span>
                         {p.inj && <span className="qflag">{p.inj.slice(0, 1)}</span>}
                       </div>
                       <div className="sub">
@@ -680,7 +708,7 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
                   <div className="rankcell">{i + 1}</div>
                   <Avatar p={p} size={38} />
                   <div className="who">
-                    <div className="nm">{p.name}<span className={'pos pos-' + p.pos}>{p.pos}</span></div>
+                    <div className="nm">{p.name}<span className={'posbadge bg-' + p.pos}>{p.pos}</span></div>
                     <div className="sub">{p.team || 'FA'}{gone ? ' · taken' : ''}</div>
                   </div>
                   <button className="rowbtn" onClick={() => toggleQueue(p)}>✕</button>
@@ -711,12 +739,12 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
                 {starters.map((sl, i) => (
                   <div className={'row nopad' + (sl.player ? '' : ' dim')} key={sl.slot + i}
                     onClick={() => sl.player && setConfirmP(sl.player)}>
-                    <div className="slotpill">{sl.slot}</div>
+                    <div className={"slotpill " + sl.slot}>{sl.slot}</div>
                     {sl.player ? <Avatar p={sl.player} size={38} />
                       : <div className="pic"><span className="ph">—</span></div>}
                     <div className="who">
                       {sl.player ? (<>
-                        <div className="nm">{sl.player.name}<span className={'pos pos-' + sl.player.pos}>{sl.player.pos}</span></div>
+                        <div className="nm">{sl.player.name}<span className={'posbadge bg-' + sl.player.pos}>{sl.player.pos}</span></div>
                         <div className="sub">
                           {sl.player.team || 'FA'}<span className="dot">·</span>Bye {sl.player.bye ?? '—'}
                           <span className="dot">·</span>R{roundOf[sl.player.id]}
@@ -737,7 +765,7 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
                     <div className="slotpill bn">BN</div>
                     <Avatar p={sl.player} size={38} />
                     <div className="who">
-                      <div className="nm">{sl.player.name}<span className={'pos pos-' + sl.player.pos}>{sl.player.pos}</span></div>
+                      <div className="nm">{sl.player.name}<span className={'posbadge bg-' + sl.player.pos}>{sl.player.pos}</span></div>
                       <div className="sub">
                         {sl.player.team || 'FA'}<span className="dot">·</span>Bye {sl.player.bye ?? '—'}
                         <span className="dot">·</span>R{roundOf[sl.player.id]}

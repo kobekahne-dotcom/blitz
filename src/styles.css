@@ -401,3 +401,21 @@ h1, h2, h3 { font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; }
   .num { min-width: 46px; }
   .slotpill { min-width: 38px; }
 }
+
+/* ---------- colored position badges ---------- */
+.posbadge {
+  font-size: 9.5px; font-weight: 800; letter-spacing: .02em;
+  padding: 2px 5px; border-radius: 3px; color: #06121A; flex: 0 0 auto;
+}
+.bg-QB { background: #FF8A8A } .bg-RB { background: #5FD4E8 }
+.bg-WR { background: #6EE7A0 } .bg-TE { background: #FFC661 }
+.bg-K  { background: #C79BF0 } .bg-DEF{ background: #A9B6C4 }
+/* slot pills echo the same colours so the lineup reads at a glance */
+.slotpill { color: var(--dim); }
+.slotpill.QB { color:#FF8A8A; border-color:#5A2A2A }
+.slotpill.RB { color:#5FD4E8; border-color:#1E4A55 }
+.slotpill.WR { color:#6EE7A0; border-color:#1F4F35 }
+.slotpill.TE { color:#FFC661; border-color:#5A4620 }
+.slotpill.K  { color:#C79BF0; border-color:#443159 }
+.slotpill.DEF{ color:#A9B6C4; border-color:#39424C }
+.slotpill.FLEX { color:#8FE3C6; border-color:#2A4F45 }

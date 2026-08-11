@@ -77,7 +77,7 @@ export default function PlayerCard({ p, projKey, myTurn, busy, onDraft, onQueue,
             <div className="pc-name">{p.name}</div>
             <div className="pc-sub">
               {teamLogo(p.team) && <img className="pc-logo" src={teamLogo(p.team)} alt="" />}
-              <span className={'pos pos-' + p.pos}>{p.pos}</span>
+              <span className={'posbadge bg-' + p.pos}>{p.pos}</span>
               {p.team || 'FA'}{p.numj ? ` · #${p.numj}` : ''}
             </div>
             {p.inj && <div className="pc-inj">{p.inj}</div>}

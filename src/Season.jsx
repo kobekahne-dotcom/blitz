@@ -14,14 +14,34 @@ const perGame = (p, key) => {
   return Math.round((season / gp) * 10) / 10
 }
 
+
+/* Single-select position filters, with the combo slots a real fantasy app
+   has. Tapping a chip SWITCHES to it — it never stacks with the last one. */
+const POS_FILTERS = [
+  { k: 'ALL',  label: 'ALL',   pos: null },
+  { k: 'QB',   label: 'QB',    pos: ['QB'] },
+  { k: 'RB',   label: 'RB',    pos: ['RB'] },
+  { k: 'WR',   label: 'WR',    pos: ['WR'] },
+  { k: 'RBWR', label: 'RB/WR', pos: ['RB', 'WR'] },
+  { k: 'TE',   label: 'TE',    pos: ['TE'] },
+  { k: 'FLEX', label: 'FLEX',  pos: ['RB', 'WR', 'TE'] },
+  { k: 'K',    label: 'K',     pos: ['K'] },
+  { k: 'DEF',  label: 'DEF',   pos: ['DEF'] },
+]
+const posOf = k => (POS_FILTERS.find(f => f.k === k) || POS_FILTERS[0]).pos
+
 const SLOT_ORDER = ['QB', 'RB', 'WR', 'TE', 'FLEX', 'K', 'DEF', 'BN']
 
 function Shot({ p, size = 40 }) {
   const [bad, setBad] = useState(false)
-  const isDef = p?.pos === 'DEF'
+  // guard FIRST — a lineup can reference a player that isn't loaded, and
+  // reading p.id before this check crashed the whole page to white.
+  if (!p) return <div className="pic" style={{ width: size, height: size }}>
+    <span className="ph">?</span></div>
+  const isDef = p.pos === 'DEF'
   const src = isDef ? teamLogo(p.team) : headshot(p.id)
-  if (!p || bad || !src) return <div className="pic" style={{ width: size, height: size }}>
-    <span className={'ph pos-' + (p?.pos || '')}>{p?.pos || '?'}</span></div>
+  if (bad || !src) return <div className="pic" style={{ width: size, height: size }}>
+    <span className={'ph pos-' + (p.pos || '')}>{p.pos || '?'}</span></div>
   return <div className={'pic' + (isDef ? ' logo' : '')} style={{ width: size, height: size }}>
     <img src={src} alt="" onError={() => setBad(true)} /></div>
 }
@@ -136,12 +156,12 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
                 return (
                   <div className={'row tap nopad' + (sel === l.player_id ? ' sel' : '')} key={l.player_id}
                     onClick={() => tapPlayer(l)}>
-                    <div className="slotpill">{l.slot}</div>
+                    <div className={"slotpill " + l.slot}>{l.slot}</div>
                     <Shot p={p} size={38} />
                     <div className="who" onClick={e => { e.stopPropagation(); p && onOpenPlayer(p) }}>
                       <div className="nm">{p?.name || l.player_id}</div>
                       <div className="sub">
-                        <span className={'pos pos-' + p?.pos}>{p?.pos}</span>
+                        <span className={'posbadge bg-' + (p?.pos || '')}>{p?.pos}</span>
                         {p?.team || 'FA'} · Bye {p?.bye ?? '—'}
                       </div>
                     </div>
@@ -161,7 +181,7 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
                     <div className="who" onClick={e => { e.stopPropagation(); p && onOpenPlayer(p) }}>
                       <div className="nm">{p?.name || l.player_id}</div>
                       <div className="sub">
-                        <span className={'pos pos-' + p?.pos}>{p?.pos}</span>
+                        <span className={'posbadge bg-' + (p?.pos || '')}>{p?.pos}</span>
                         {p?.team || 'FA'} · Bye {p?.bye ?? '—'}
                       </div>
                     </div>
@@ -257,33 +277,31 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
 /* ---------- free agents ---------- */
 function FreeAgents({ players, allPicks, projKey, onOpenPlayer }) {
   const [q, setQ] = useState('')
-  const [posSel, setPosSel] = useState(new Set())
+  const [posKey, setPosKey] = useState('ALL')
   const [shown, setShown] = useState(75)
-  useEffect(() => { setShown(75) }, [posSel, q])
+  useEffect(() => { setShown(75) }, [posKey, q])
   const taken = useMemo(() => new Set((allPicks || []).map(p => p.player_id)), [allPicks])
 
   const list = useMemo(() => {
     if (!players) return []
     let l = players.filter(p => !taken.has(p.id))
-    if (posSel.size) l = l.filter(p => posSel.has(p.pos))
+    const pf = posOf(posKey)
+    if (pf) l = l.filter(p => pf.includes(p.pos))
     if (q.trim()) {
       const s = q.trim().toLowerCase()
       l = l.filter(p => p.name.toLowerCase().includes(s) || (p.team || '').toLowerCase().includes(s))
     }
     return l.sort((a, b) => (b[projKey] || 0) - (a[projKey] || 0))
-  }, [players, taken, posSel, q, projKey])
+  }, [players, taken, posKey, q, projKey])
 
   return (
     <div>
       <div className="sect"><h2>Free agents — {list.length} available</h2></div>
       <input className="search" placeholder="Search free agents" value={q} onChange={e => setQ(e.target.value)} />
       <div className="chips">
-        <button className={posSel.size === 0 ? 'on' : ''} onClick={() => setPosSel(new Set())}>ALL</button>
-        {['QB', 'RB', 'WR', 'TE', 'K', 'DEF'].map(pos => (
-          <button key={pos} className={posSel.has(pos) ? 'on' : ''}
-            onClick={() => setPosSel(prev => {
-              const n = new Set(prev); n.has(pos) ? n.delete(pos) : n.add(pos); return n
-            })}>{pos}</button>
+        {POS_FILTERS.map(f => (
+          <button key={f.k} className={posKey === f.k ? 'on' : ''}
+            onClick={() => setPosKey(f.k)}>{f.label}</button>
         ))}
       </div>
       {list.slice(0, shown).map(p => (
