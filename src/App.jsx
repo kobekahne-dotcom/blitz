@@ -1,12 +1,32 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { supabase, ensureSession } from './supabase.js'
 import { slotForPick, roundOfPick, pickInRound } from './snake.js'
+import Home from './Home.jsx'
+import PlayerCard from './PlayerCard.jsx'
 
-/* ============================================================
-   Hash router: #/           home (create or join)
-                #/join/CODE  join with code prefilled
-                #/league/ID  lobby → draft room
-   ============================================================ */
+const go = (h) => { window.location.hash = h }
+
+/* ---------- real player photos, free from Sleeper's CDN ---------- */
+const headshot = id => `https://sleepercdn.com/content/nfl/players/${id}.jpg`
+const teamLogo = t => t ? `https://sleepercdn.com/images/team_logos/nfl/${t.toLowerCase()}.png` : null
+
+function Avatar({ p, size = 40 }) {
+  const [failed, setFailed] = useState(false)
+  const isDef = p.pos === 'DEF'
+  const src = isDef ? teamLogo(p.team) : headshot(p.id)
+  if (failed || !src) {
+    return (
+      <div className="avatar fallback" style={{ width: size, height: size }}>
+        <span className={'pos-' + p.pos}>{p.pos}</span>
+      </div>
+    )
+  }
+  return (
+    <div className={'avatar' + (isDef ? ' logo' : '')} style={{ width: size, height: size }}>
+      <img src={src} alt="" width={size} height={size} loading="lazy" onError={() => setFailed(true)} />
+    </div>
+  )
+}
 
 function useHashRoute() {
   const [hash, setHash] = useState(window.location.hash || '#/')
@@ -17,73 +37,68 @@ function useHashRoute() {
   }, [])
   return hash
 }
-const go = (h) => { window.location.hash = h }
 
 /* ============================================================
-   "Add to home screen" prompt. Android gets a real install button;
-   iOS has no API for it, so it gets the actual tap-by-tap instruction.
+   Add to home screen
    ============================================================ */
 function InstallPrompt() {
   const [deferred, setDeferred] = useState(null)
   const [show, setShow] = useState(false)
-
   const standalone = window.matchMedia('(display-mode: standalone)').matches
     || window.navigator.standalone === true
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent)
-  const isAndroid = /android/i.test(navigator.userAgent)
 
   useEffect(() => {
     if (standalone || localStorage.getItem('blitz-install-dismissed')) return
     const onPrompt = (e) => { e.preventDefault(); setDeferred(e); setShow(true) }
     window.addEventListener('beforeinstallprompt', onPrompt)
-    // iOS never fires that event — show the manual instruction instead
     if (isIOS) setShow(true)
     return () => window.removeEventListener('beforeinstallprompt', onPrompt)
   }, [standalone, isIOS])
 
   if (!show || standalone) return null
-
   const dismiss = () => { localStorage.setItem('blitz-install-dismissed', '1'); setShow(false) }
-  const install = async () => {
-    if (!deferred) return
-    deferred.prompt()
-    await deferred.userChoice
-    setDeferred(null); setShow(false)
-  }
 
   return (
     <div className="installbar">
-      <img src="/blitz/icon-192.png" alt="" width="38" height="38" />
+      <img src="/blitz/icon-192.png" alt="" width="36" height="36" />
       <div className="itext">
         <strong>Add BLITZ to your home screen</strong>
         {isIOS
-          ? <span>Tap the Share button <b>⎋</b> below, then <b>Add to Home Screen</b>.</span>
-          : <span>Opens full screen like a real app — no browser bars during the draft.</span>}
+          ? <span>Tap Share, then <b>Add to Home Screen</b>. Safari only.</span>
+          : <span>Full screen, no browser bars during the draft.</span>}
       </div>
-      {!isIOS && deferred && <button className="btn small" onClick={install}>Install</button>}
+      {!isIOS && deferred && (
+        <button className="btn small" onClick={async () => { deferred.prompt(); await deferred.userChoice; setShow(false) }}>Install</button>
+      )}
       <button className="ix" onClick={dismiss} aria-label="Dismiss">✕</button>
     </div>
   )
 }
 
+/* ============================================================
+   APP
+   ============================================================ */
 export default function App() {
   const hash = useHashRoute()
   const [session, setSession] = useState(null)
   const [authErr, setAuthErr] = useState(null)
 
-  useEffect(() => {
+  const connect = useCallback(() => {
+    setAuthErr(null)
     ensureSession().then(setSession).catch(e => setAuthErr(e.message))
   }, [])
+  useEffect(() => { connect() }, [connect])
 
   let body
   if (authErr) {
     body = (
       <div className="wrap">
         <div className="err">
-          Could not sign in: {authErr}
-          <div style={{ marginTop: 8 }}>
-            <button className="btn small" onClick={() => { setAuthErr(null); ensureSession().then(setSession).catch(e => setAuthErr(e.message)) }}>Retry</button>
-          </div>
+          {/rate limit/i.test(authErr)
+            ? "Too many sign-ins from this network in the last hour. Wait a few minutes and try again."
+            : 'Could not sign in: ' + authErr}
+          <div style={{ marginTop: 10 }}><button className="btn small" onClick={connect}>Try again</button></div>
         </div>
       </div>
     )
@@ -97,11 +112,15 @@ export default function App() {
     body = <Home uid={session.user.id} prefillCode="" />
   }
 
+  const inLeague = hash.startsWith('#/league/')
   return (
     <>
       <div className="topbar">
-        <div className="logo" style={{ cursor: 'pointer' }} onClick={() => go('#/')}>BL<span>I</span>TZ</div>
-        <div className="microlabel" style={{ color: 'rgba(255,255,255,0.7)' }}>Draft Room · 2026</div>
+        {inLeague
+          ? <button className="backbtn" onClick={() => go('#/')} aria-label="Home">‹</button>
+          : null}
+        <div className="logo" onClick={() => go('#/')}>BL<span>I</span>TZ</div>
+        <div className="microlabel topsub">Draft Room · 2026</div>
       </div>
       <InstallPrompt />
       {body}
@@ -110,143 +129,12 @@ export default function App() {
 }
 
 /* ============================================================
-   HOME — create a league or join with a code
-   ============================================================ */
-function Home({ uid, prefillCode }) {
-  const [mode, setMode] = useState(prefillCode ? 'join' : 'create')
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState(null)
-
-  // create form
-  const [name, setName] = useState('')
-  const [teamName, setTeamName] = useState('')
-  const [numTeams, setNumTeams] = useState(10)
-  const [rounds, setRounds] = useState(15)
-  const [scoring, setScoring] = useState('ppr')
-  const [secs, setSecs] = useState(90)
-
-  // join form
-  const [code, setCode] = useState(prefillCode)
-  const [joinTeam, setJoinTeam] = useState('')
-
-  // recovery form (dead phone / new device)
-  const [recCode, setRecCode] = useState(prefillCode)
-  const [claimCode, setClaimCode] = useState('')
-
-  const recover = async () => {
-    setBusy(true); setErr(null)
-    const { data, error } = await supabase.rpc('claim_team', {
-      p_join_code: recCode, p_claim_code: claimCode,
-    })
-    setBusy(false)
-    if (error) { setErr(error.message); return }
-    go('#/league/' + data.league_id)
-  }
-
-  const create = async () => {
-    setBusy(true); setErr(null)
-    const { data, error } = await supabase.rpc('create_league', {
-      p_name: name, p_num_teams: Number(numTeams), p_rounds: Number(rounds),
-      p_scoring: scoring, p_pick_seconds: Number(secs), p_team_name: teamName,
-    })
-    setBusy(false)
-    if (error) { setErr(error.message); return }
-    go('#/league/' + data.league_id)
-  }
-
-  const join = async () => {
-    setBusy(true); setErr(null)
-    const { data, error } = await supabase.rpc('join_league', {
-      p_join_code: code, p_team_name: joinTeam,
-    })
-    setBusy(false)
-    if (error) { setErr(error.message); return }
-    go('#/league/' + data.league_id)
-  }
-
-  return (
-    <div className="wrap" style={{ maxWidth: 520 }}>
-      <div className="tabs">
-        <button className={mode === 'create' ? 'on' : ''} onClick={() => setMode('create')}>Create</button>
-        <button className={mode === 'join' ? 'on' : ''} onClick={() => setMode('join')}>Join</button>
-        <button className={mode === 'recover' ? 'on' : ''} onClick={() => setMode('recover')}>Recover</button>
-      </div>
-      {err && <div className="err">{err}</div>}
-
-      {mode === 'create' ? (
-        <div className="card">
-          <div className="field"><label className="microlabel">League name</label>
-            <input value={name} onChange={e => setName(e.target.value)} placeholder="The Boys 2026" /></div>
-          <div className="field"><label className="microlabel">Your team name</label>
-            <input value={teamName} onChange={e => setTeamName(e.target.value)} placeholder="Kobe's Killers" /></div>
-          <div className="field"><label className="microlabel">Teams</label>
-            <select value={numTeams} onChange={e => setNumTeams(e.target.value)}>
-              {[4,6,8,10,12,14,16].map(n => <option key={n} value={n}>{n} teams</option>)}
-            </select></div>
-          <div className="field"><label className="microlabel">Rounds</label>
-            <select value={rounds} onChange={e => setRounds(e.target.value)}>
-              {[8,10,12,13,14,15,16,18,20].map(n => <option key={n} value={n}>{n} rounds</option>)}
-            </select></div>
-          <div className="field"><label className="microlabel">Scoring (used for rankings & autopick)</label>
-            <select value={scoring} onChange={e => setScoring(e.target.value)}>
-              <option value="ppr">Full PPR</option>
-              <option value="half">Half PPR</option>
-              <option value="std">Standard</option>
-            </select></div>
-          <div className="field"><label className="microlabel">Pick clock</label>
-            <select value={secs} onChange={e => setSecs(e.target.value)}>
-              {[30,60,90,120,180,300].map(n => <option key={n} value={n}>{n} seconds</option>)}
-            </select></div>
-          <button className="btn block" disabled={busy || !name.trim() || !teamName.trim()} onClick={create}>
-            {busy ? 'Creating…' : 'Create league'}
-          </button>
-        </div>
-      ) : mode === 'join' ? (
-        <div className="card">
-          <div className="field"><label className="microlabel">League code</label>
-            <input value={code} onChange={e => setCode(e.target.value)} placeholder="8-letter code from your invite" /></div>
-          <div className="field"><label className="microlabel">Your team name</label>
-            <input value={joinTeam} onChange={e => setJoinTeam(e.target.value)} placeholder="Team name" /></div>
-          <button className="btn block" disabled={busy || !code.trim()} onClick={join}>
-            {busy ? 'Joining…' : 'Join league'}
-          </button>
-          <p style={{ marginTop: 10, fontSize: 13, color: 'var(--dim)' }}>
-            Already joined on this device? Same button gets you back in.
-          </p>
-        </div>
-      ) : (
-        <div className="card">
-          <div className="notice">
-            Switched phones, cleared your browser, or lost your team? Enter the league code
-            and your 5-character recovery code to take your team back on this device.
-          </div>
-          <div className="field"><label className="microlabel">League code</label>
-            <input value={recCode} onChange={e => setRecCode(e.target.value)} placeholder="8-letter league code" /></div>
-          <div className="field"><label className="microlabel">Your recovery code</label>
-            <input value={claimCode} onChange={e => setClaimCode(e.target.value.toUpperCase())}
-              placeholder="5 characters" maxLength={5} style={{ textTransform: 'uppercase', letterSpacing: '0.15em' }} /></div>
-          <button className="btn block" disabled={busy || !recCode.trim() || claimCode.length < 5} onClick={recover}>
-            {busy ? 'Recovering…' : 'Get my team back'}
-          </button>
-          <p style={{ marginTop: 10, fontSize: 13, color: 'var(--dim)' }}>
-            Don't know your code? Ask your commissioner — they can see everyone's.
-          </p>
-        </div>
-      )}
-    </div>
-  )
-}
-
-/* ============================================================
-   LEAGUE — loads everything, decides lobby vs draft room.
-   ALL state rebuilds from the database on every (re)connect.
+   LEAGUE loader — all state rebuilt from the database
    ============================================================ */
 function League({ leagueId, uid }) {
   const [state, setState] = useState({ phase: 'loading' })
   const [connIssue, setConnIssue] = useState(false)
-  const chanRef = useRef(null)
-  const stateRef = useRef(state)
-  stateRef.current = state
+  const stateRef = useRef(state); stateRef.current = state
 
   const refetch = useCallback(async () => {
     try {
@@ -255,9 +143,7 @@ function League({ leagueId, uid }) {
         supabase.from('teams').select('*').eq('league_id', leagueId).order('draft_slot', { ascending: true, nullsFirst: false }),
         supabase.from('drafts').select('*').eq('league_id', leagueId).single(),
       ])
-      if (lg.error || tm.error || dr.error) {
-        throw new Error((lg.error || tm.error || dr.error).message)
-      }
+      if (lg.error || tm.error || dr.error) throw new Error((lg.error || tm.error || dr.error).message)
       let picks = []
       if (dr.data.status !== 'pending') {
         const pk = await supabase.from('picks').select('*').eq('draft_id', dr.data.id).order('pick_no')
@@ -267,36 +153,29 @@ function League({ leagueId, uid }) {
       setConnIssue(false)
       setState({ phase: 'ready', league: lg.data, teams: tm.data, draft: dr.data, picks })
     } catch (e) {
-      // keep showing the last good state if we have one; flag the connection
       if (stateRef.current.phase === 'ready') setConnIssue(true)
       else setState({ phase: 'error', message: e.message })
     }
   }, [leagueId])
 
-  // realtime + reconnect + polling fallback
   useEffect(() => {
     refetch()
-    const ch = supabase
-      .channel('league-' + leagueId)
+    const ch = supabase.channel('league-' + leagueId)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'picks' }, refetch)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'drafts' }, refetch)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'teams' }, refetch)
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') { setConnIssue(false); refetch() }
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') setConnIssue(true)
+      .subscribe(s => {
+        if (s === 'SUBSCRIBED') { setConnIssue(false); refetch() }
+        if (s === 'CHANNEL_ERROR' || s === 'TIMED_OUT') setConnIssue(true)
       })
-    chanRef.current = ch
-
-    const poll = setInterval(refetch, 15000) // belt-and-braces vs missed realtime events
+    const poll = setInterval(refetch, 15000)
     const onVis = () => { if (!document.hidden) refetch() }
-    const onOnline = () => refetch()
     document.addEventListener('visibilitychange', onVis)
-    window.addEventListener('online', onOnline)
+    window.addEventListener('online', refetch)
     return () => {
-      supabase.removeChannel(ch)
-      clearInterval(poll)
+      supabase.removeChannel(ch); clearInterval(poll)
       document.removeEventListener('visibilitychange', onVis)
-      window.removeEventListener('online', onOnline)
+      window.removeEventListener('online', refetch)
     }
   }, [leagueId, refetch])
 
@@ -304,10 +183,10 @@ function League({ leagueId, uid }) {
   if (state.phase === 'error') return (
     <div className="wrap">
       <div className="err">
-        {state.message.includes('0 rows') || state.message.includes('multiple (or no) rows')
-          ? "You're not in this league on this device. Go back and join with the league code."
+        {/0 rows|no rows/i.test(state.message)
+          ? "You're not in this league on this device. Go home and join with the league code, or use Recover."
           : state.message}
-        <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+        <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
           <button className="btn small" onClick={refetch}>Retry</button>
           <button className="btn small secondary" onClick={() => go('#/')}>Home</button>
         </div>
@@ -317,144 +196,113 @@ function League({ leagueId, uid }) {
 
   const { league, teams, draft, picks } = state
   return draft.status === 'pending'
-    ? <Lobby league={league} teams={teams} draft={draft} uid={uid} connIssue={connIssue} />
-    : <DraftRoom league={league} teams={teams} draft={draft} picks={picks} uid={uid} connIssue={connIssue} refetch={refetch} />
+    ? <Lobby league={league} teams={teams} uid={uid} connIssue={connIssue} />
+    : <DraftRoom league={league} teams={teams} draft={draft} picks={picks} uid={uid}
+        connIssue={connIssue} refetch={refetch} />
 }
 
 /* ============================================================
-   LOBBY — share link, who's in, commissioner starts
+   LOBBY
    ============================================================ */
-function Lobby({ league, teams, draft, uid, connIssue }) {
+function Lobby({ league, teams, uid, connIssue }) {
   const [err, setErr] = useState(null)
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [editingId, setEditingId] = useState(null)
+  const [editName, setEditName] = useState('')
   const isCommish = league.commissioner_uid === uid
   const myTeam = teams.find(t => t.owner_uid === uid)
   const shareUrl = window.location.origin + window.location.pathname + '#/join/' + league.join_code
-  const [editingId, setEditingId] = useState(null)
-  const [editName, setEditName] = useState('')
 
-  const saveName = async (teamId) => {
+  const call = async (fn, args) => {
     setBusy(true); setErr(null)
-    const { error } = await supabase.rpc('rename_team', { p_team_id: teamId, p_name: editName })
-    setBusy(false)
-    if (error) { setErr(error.message); return }
-    setEditingId(null)
-  }
-
-  const removeTeam = async (t) => {
-    if (!window.confirm(`Remove "${t.name}" from the league? This cannot be undone.`)) return
-    setBusy(true); setErr(null)
-    const { error } = await supabase.rpc('remove_team', { p_team_id: t.id })
+    const { error } = await supabase.rpc(fn, args)
     setBusy(false)
     if (error) setErr(error.message)
-  }
-
-  const start = async () => {
-    if (!window.confirm(`Start the draft with ${teams.length} teams? Draft order is randomized and no one else can join.`)) return
-    setBusy(true); setErr(null)
-    const { error } = await supabase.rpc('start_draft', { p_league_id: league.id })
-    setBusy(false)
-    if (error) setErr(error.message)
-  }
-
-  const copy = async () => {
-    try { await navigator.clipboard.writeText(shareUrl); setCopied(true); setTimeout(() => setCopied(false), 2000) }
-    catch { /* clipboard blocked — the code is visible anyway */ }
+    return !error
   }
 
   return (
-    <div className="wrap" style={{ maxWidth: 640 }}>
+    <div className="wrap narrow">
       {connIssue && <div className="statusband reconnecting">Reconnecting… showing the last known state.</div>}
-      <h2 style={{ marginBottom: 4 }}>{league.name}</h2>
-      <div className="microlabel" style={{ marginBottom: 12 }}>
-        {league.scoring === 'ppr' ? 'Full PPR' : league.scoring === 'half' ? 'Half PPR' : 'Standard'} ·
-        {' '}{league.rounds} rounds · {league.pick_seconds}s clock
+
+      <div className="lobbyhead">
+        <h1>{league.name}</h1>
+        <div className="microlabel">
+          {league.scoring === 'ppr' ? 'Full PPR' : league.scoring === 'half' ? 'Half PPR' : 'Standard'}
+          {' · '}{league.rounds} rounds{' · '}{league.pick_seconds}s clock
+        </div>
       </div>
 
       {err && <div className="err">{err}</div>}
 
       <div className="card">
-        <div className="microlabel" style={{ marginBottom: 8 }}>Invite your league</div>
+        <div className="microlabel mb8">Invite your league</div>
         <div className="sharebox">
           <code>{shareUrl}</code>
-          <button className="btn small secondary" onClick={copy}>{copied ? 'Copied ✓' : 'Copy'}</button>
+          <button className="btn small secondary" onClick={async () => {
+            try { await navigator.clipboard.writeText(shareUrl); setCopied(true); setTimeout(() => setCopied(false), 1800) } catch {}
+          }}>{copied ? 'Copied ✓' : 'Copy'}</button>
         </div>
-        <p style={{ fontSize: 13, color: 'var(--dim)', marginTop: 8 }}>
-          Or tell them the code: <strong style={{ color: 'var(--ink)' }}>{league.join_code}</strong>
-        </p>
+        <p className="hint">Or read them the code: <strong>{league.join_code}</strong></p>
       </div>
 
       <div className="card">
-        <div className="microlabel" style={{ marginBottom: 4 }}>
-          Teams — {teams.length} of {league.num_teams} joined
-        </div>
+        <div className="microlabel mb8">Teams — {teams.length} of {league.num_teams} joined</div>
         {teams.map(t => {
           const canEdit = isCommish || t.owner_uid === uid
           const canRemove = isCommish && t.owner_uid !== league.commissioner_uid
           return (
             <div className="teamline" key={t.id}>
-              <div className={'slotnum' + (t.draft_slot ? '' : ' unset')}>{t.draft_slot ?? '–'}</div>
+              <div className="slotnum unset">{t.name.slice(0, 1).toUpperCase()}</div>
               {editingId === t.id ? (
                 <>
-                  <input
-                    value={editName}
+                  <input className="inlineinput" value={editName} maxLength={40} autoFocus
                     onChange={e => setEditName(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') saveName(t.id); if (e.key === 'Escape') setEditingId(null) }}
-                    maxLength={40} autoFocus
-                    style={{ flex: 1, minWidth: 0, padding: '7px 9px', border: '1px solid var(--blue)', borderRadius: 2 }}
-                  />
-                  <button className="btn small" disabled={busy} onClick={() => saveName(t.id)}>Save</button>
-                  <button className="btn small secondary" disabled={busy} onClick={() => setEditingId(null)}>Cancel</button>
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') call('rename_team', { p_team_id: t.id, p_name: editName }).then(ok => ok && setEditingId(null))
+                      if (e.key === 'Escape') setEditingId(null)
+                    }} />
+                  <button className="btn small" disabled={busy}
+                    onClick={() => call('rename_team', { p_team_id: t.id, p_name: editName }).then(ok => ok && setEditingId(null))}>Save</button>
+                  <button className="btn small secondary" onClick={() => setEditingId(null)}>Cancel</button>
                 </>
               ) : (
                 <>
-                  <div style={{ fontWeight: 600, flex: 1, minWidth: 0 }}>{t.name}</div>
-                  {t.owner_uid === uid && <span className="microlabel">you</span>}
-                  {t.owner_uid === league.commissioner_uid && <span className="microlabel" style={{ color: 'var(--blue)' }}>commish</span>}
-                  {canEdit && t.claim_code && (
-                    <code style={{
-                      background: '#F5F7F9', border: '1px solid var(--line)', padding: '3px 7px',
-                      fontSize: 12, fontWeight: 800, letterSpacing: '0.1em',
-                    }}>{t.claim_code}</code>
-                  )}
-                  {canEdit && (
-                    <button className="qbtn" title="Rename"
-                      onClick={() => { setEditingId(t.id); setEditName(t.name); setErr(null) }}>✎</button>
-                  )}
-                  {canRemove && (
-                    <button className="qbtn" title="Remove this team" style={{ color: 'var(--red)', borderColor: '#F5B5B5' }}
-                      onClick={() => removeTeam(t)}>✕</button>
-                  )}
+                  <div className="tname">{t.name}</div>
+                  {t.owner_uid === uid && <span className="tag">YOU</span>}
+                  {t.owner_uid === league.commissioner_uid && <span className="tag blue">COMMISH</span>}
+                  {canEdit && t.claim_code && <code className="claimcode">{t.claim_code}</code>}
+                  {canEdit && <button className="qbtn" title="Rename"
+                    onClick={() => { setEditingId(t.id); setEditName(t.name); setErr(null) }}>✎</button>}
+                  {canRemove && <button className="qbtn danger" title="Remove"
+                    onClick={() => { if (window.confirm(`Remove "${t.name}"?`)) call('remove_team', { p_team_id: t.id }) }}>✕</button>}
                 </>
               )}
             </div>
           )
         })}
         {myTeam?.claim_code && (
-          <div className="notice" style={{ marginTop: 10, marginBottom: 0 }}>
-            <strong>Write down your recovery code: {myTeam.claim_code}</strong><br />
-            If your phone dies or you switch devices mid-draft, that code plus the league code
-            gets your team back. Without it you're locked out.
+          <div className="notice mt10">
+            <strong>Your recovery code: {myTeam.claim_code}</strong><br />
+            Write it down. If your phone dies mid-draft, that plus the league code gets your team back.
           </div>
-        )}
-        {isCommish && (
-          <p style={{ marginTop: 8, fontSize: 13, color: 'var(--dim)' }}>
-            You can see everyone's recovery codes — screenshot this before you start.
-            If someone gets locked out tonight, read them their code.
-          </p>
         )}
       </div>
 
       {isCommish ? (
         <>
-          <div className="notice">Draft order is randomized when you hit start. Anyone not joined by then plays from the couch.</div>
-          <button className="btn block danger" disabled={busy || teams.length < 2} onClick={start}>
+          <div className="notice">Draft order is randomised when you start. Anyone not in by then is left out.</div>
+          <button className="btn block big danger" disabled={busy || teams.length < 2}
+            onClick={async () => {
+              if (!window.confirm(`Start the draft with ${teams.length} teams? Nobody else can join after this.`)) return
+              await call('start_draft', { p_league_id: league.id })
+            }}>
             {busy ? 'Starting…' : `Start draft with ${teams.length} ${teams.length === 1 ? 'team' : 'teams'}`}
           </button>
         </>
       ) : (
-        <div className="notice">Waiting for the commissioner to start the draft. This page updates on its own.</div>
+        <div className="notice">Waiting for the commissioner to start. This updates on its own.</div>
       )}
     </div>
   )
@@ -463,6 +311,29 @@ function Lobby({ league, teams, draft, uid, connIssue }) {
 /* ============================================================
    DRAFT ROOM
    ============================================================ */
+
+/* A compact, position-aware stat line for the list — last season's real numbers. */
+function statLine(p, projKey) {
+  const ly = p.lyd || {}, pr = p.projd || {}
+  const bit = (v, lab) => v == null ? null : `${v} ${lab}`
+  let parts = []
+  if (p.pos === 'QB') {
+    parts = [bit(ly.pass_yd, 'pass yd'), bit(ly.pass_td, 'TD'), bit(ly.rush_yd, 'rush yd')]
+  } else if (p.pos === 'RB') {
+    parts = [bit(ly.rush_yd, 'rush yd'), bit(ly.touch, 'touches'), bit(ly.ypc, 'ypc')]
+  } else if (p.pos === 'WR' || p.pos === 'TE') {
+    parts = [bit(ly.rec, 'rec'), bit(ly.rec_yd, 'yd'), bit(ly.tgt_share, '% tgt share')]
+  }
+  parts = parts.filter(Boolean)
+  if (!parts.length) {
+    if (pr.gp) return `${pr.gp} games projected`
+    return 'No 2025 stats'
+  }
+  return "'25: " + parts.join(' · ')
+}
+
+const BOT_CAP = { QB: 2, RB: 6, WR: 7, TE: 2, K: 1, DEF: 1 }
+
 function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch }) {
   const [players, setPlayers] = useState(null)
   const [playersErr, setPlayersErr] = useState(null)
@@ -474,6 +345,8 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch }) {
   const [busy, setBusy] = useState(false)
   const [queue, setQueue] = useState([])
   const [now, setNow] = useState(Date.now())
+  const [showBoard, setShowBoard] = useState(false)
+  const botTimer = useRef(null)
 
   const myTeam = teams.find(t => t.owner_uid === uid)
   const isCommish = league.commissioner_uid === uid
@@ -485,21 +358,18 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch }) {
   const myTurn = !!(myTeam && teamOnClock && teamOnClock.id === myTeam.id && draft.status === 'active')
 
   const takenIds = useMemo(() => new Set(picks.map(p => p.player_id)), [picks])
-  const pickByNo = useMemo(() => { const m = new Map(); picks.forEach(p => m.set(p.pick_no, p)); return m }, [picks])
-  const teamById = useMemo(() => { const m = new Map(); teams.forEach(t => m.set(t.id, t)); return m }, [teams])
+  const pickByNo = useMemo(() => new Map(picks.map(p => [p.pick_no, p])), [picks])
+  const teamById = useMemo(() => new Map(teams.map(t => [t.id, t])), [teams])
 
-  // players load — once, from OUR database (RLS: readable reference data)
   useEffect(() => {
     let live = true
     supabase.from('players').select('*').then(({ data, error }) => {
       if (!live) return
-      if (error) { setPlayersErr(error.message); return }
-      setPlayers(data)
+      if (error) setPlayersErr(error.message); else setPlayers(data)
     })
     return () => { live = false }
   }, [])
 
-  // my queue
   const loadQueue = useCallback(async () => {
     if (!myTeam) return
     const { data } = await supabase.from('queues').select('*').eq('team_id', myTeam.id).order('rank')
@@ -507,30 +377,54 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch }) {
   }, [myTeam?.id])
   useEffect(() => { loadQueue() }, [loadQueue])
 
-  // server-clock autopick heartbeat — EVERY client fires it; DB locking dedupes
+  const playerById = useMemo(() => new Map((players || []).map(p => [p.id, p])), [players])
+  const projKey = league.scoring === 'ppr' ? 'ppr' : league.scoring === 'half' ? 'half' : 'std'
+
+  /* ---- MOCK: this browser plays every computer team ---- */
   useEffect(() => {
-    if (draft.status !== 'active') return
+    clearTimeout(botTimer.current)
+    if (!league.is_mock || draft.status !== 'active' || done || !players) return
+    if (!teamOnClock || teamOnClock.owner_uid === uid) return
+
+    botTimer.current = setTimeout(async () => {
+      const mine = picks.filter(p => p.team_id === teamOnClock.id)
+      const counts = {}
+      for (const pk of mine) {
+        const pl = playerById.get(pk.player_id)
+        if (pl) counts[pl.pos] = (counts[pl.pos] || 0) + 1
+      }
+      const round = roundOfPick(draft.current_pick, league.num_teams)
+      const late = round > league.rounds - 3
+      const cands = players
+        .filter(p => !takenIds.has(p.id))
+        .filter(p => (counts[p.pos] || 0) < (BOT_CAP[p.pos] ?? 99))
+        .filter(p => late || (p.pos !== 'K' && p.pos !== 'DEF'))
+        .sort((a, b) => (a.adp ?? 9999) - (b.adp ?? 9999) || (b[projKey] ?? 0) - (a[projKey] ?? 0))
+      const pool = cands.slice(0, 3)
+      const choice = pool[Math.floor(Math.random() * pool.length)] || cands[0]
+      if (!choice) return
+      await supabase.rpc('make_pick', {
+        p_draft_id: draft.id, p_team_id: teamOnClock.id, p_player_id: choice.id,
+      })
+      refetch()
+    }, 900 + Math.random() * 1600)
+
+    return () => clearTimeout(botTimer.current)
+  }, [league.is_mock, draft.current_pick, draft.status, done, players, teamOnClock?.id, uid])
+
+  /* ---- server-clock autopick heartbeat (real leagues) ---- */
+  useEffect(() => {
+    if (draft.status !== 'active' || league.is_mock) return
     const iv = setInterval(() => {
       supabase.rpc('autopick_if_expired', { p_draft_id: draft.id })
-        .then(({ data }) => { if (data && data.fired) refetch() })
-        .catch(() => {})
+        .then(({ data }) => { if (data?.fired) refetch() }).catch(() => {})
     }, 5000)
     return () => clearInterval(iv)
-  }, [draft.id, draft.status, refetch])
+  }, [draft.id, draft.status, league.is_mock, refetch])
 
-  // countdown ticker
-  useEffect(() => {
-    const iv = setInterval(() => setNow(Date.now()), 500)
-    return () => clearInterval(iv)
-  }, [])
+  useEffect(() => { const iv = setInterval(() => setNow(Date.now()), 500); return () => clearInterval(iv) }, [])
   const deadlineMs = draft.pick_deadline ? new Date(draft.pick_deadline).getTime() : null
   const secsLeft = deadlineMs ? Math.max(0, Math.round((deadlineMs - now) / 1000)) : null
-
-  const playerById = useMemo(() => {
-    const m = new Map(); (players || []).forEach(p => m.set(p.id, p)); return m
-  }, [players])
-
-  const projKey = league.scoring === 'ppr' ? 'ppr' : league.scoring === 'half' ? 'half' : 'std'
 
   const available = useMemo(() => {
     if (!players) return []
@@ -540,11 +434,7 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch }) {
       const s = q.trim().toLowerCase()
       list = list.filter(p => p.name.toLowerCase().includes(s) || (p.team || '').toLowerCase().includes(s))
     }
-    return list.sort((a, b) => {
-      const aa = a.adp ?? 9999, bb = b.adp ?? 9999
-      if (aa !== bb) return aa - bb
-      return (b[projKey] ?? 0) - (a[projKey] ?? 0)
-    })
+    return list.sort((a, b) => (a.adp ?? 9999) - (b.adp ?? 9999) || (b[projKey] ?? 0) - (a[projKey] ?? 0))
   }, [players, takenIds, posFilter, q, projKey])
 
   const doPick = async (p) => {
@@ -559,24 +449,12 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch }) {
 
   const toggleQueue = async (p) => {
     if (!myTeam) return
-    const inQ = queue.find(x => x.player_id === p.id)
-    if (inQ) {
+    if (queue.find(x => x.player_id === p.id)) {
       await supabase.from('queues').delete().eq('team_id', myTeam.id).eq('player_id', p.id)
     } else {
-      const maxRank = queue.reduce((m, x) => Math.max(m, x.rank), 0)
-      await supabase.from('queues').insert({ team_id: myTeam.id, player_id: p.id, rank: maxRank + 1 })
+      const max = queue.reduce((m, x) => Math.max(m, x.rank), 0)
+      await supabase.from('queues').insert({ team_id: myTeam.id, player_id: p.id, rank: max + 1 })
     }
-    loadQueue()
-  }
-
-  const moveQueue = async (item, dir) => {
-    const idx = queue.findIndex(x => x.player_id === item.player_id)
-    const swap = queue[idx + dir]
-    if (!swap) return
-    await Promise.all([
-      supabase.from('queues').update({ rank: swap.rank }).eq('team_id', myTeam.id).eq('player_id', item.player_id),
-      supabase.from('queues').update({ rank: item.rank }).eq('team_id', myTeam.id).eq('player_id', swap.player_id),
-    ])
     loadQueue()
   }
 
@@ -589,75 +467,178 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch }) {
 
   const queueIds = new Set(queue.map(x => x.player_id))
   const myPicks = picks.filter(p => myTeam && p.team_id === myTeam.id)
+  const lastPick = picks[picks.length - 1]
+  const lastPlayer = lastPick ? playerById.get(lastPick.player_id) : null
 
   return (
-    <div className="wrap">
-      {connIssue && <div className="statusband reconnecting">Reconnecting… showing the last known state. Picks still go through when you tap.</div>}
+    <div className="wrap draftwrap">
+      {connIssue && <div className="statusband reconnecting">Reconnecting… picks still go through.</div>}
+      {league.is_mock && <div className="mockband">MOCK DRAFT — the computer plays every other team</div>}
 
-      {/* status band / clock */}
+      {/* ---- clock ---- */}
       {done ? (
-        <div className="statusband complete">Draft complete — {picks.length} picks. Rosters are saved below.</div>
+        <div className="statusband complete">Draft complete — {picks.length} picks. Your roster is below.</div>
       ) : draft.status === 'paused' ? (
-        <div className="statusband paused">Draft paused by the commissioner.</div>
+        <div className="statusband paused">Paused by the commissioner.</div>
       ) : (
-        <div className={'onclock' + (myTurn ? ' me' : '')}>
-          <div className="clockbig">{secsLeft != null ? `${Math.floor(secsLeft / 60)}:${String(secsLeft % 60).padStart(2, '0')}` : '—'}</div>
-          <div className="who">
-            <div className="microlabel">Pick {draft.current_pick} of {totalPicks} · Round {roundOfPick(draft.current_pick, league.num_teams)}</div>
-            <div className="name">{teamOnClock ? teamOnClock.name : '—'}</div>
+        <div className={'clockcard' + (myTurn ? ' me' : '')}>
+          <div className="cc-left">
+            <div className="cc-kicker">{myTurn ? "You're on the clock" : 'On the clock'}</div>
+            <div className="cc-team">{teamOnClock ? teamOnClock.name : '—'}</div>
+            <div className="cc-meta">Pick {draft.current_pick} of {totalPicks} · Round {roundOfPick(draft.current_pick, league.num_teams)}</div>
           </div>
-          {myTurn && <div className="yourturn">You're on the clock</div>}
+          <div className="cc-clock">
+            <div className={'cc-time' + (secsLeft !== null && secsLeft <= 10 ? ' urgent' : '')}>
+              {secsLeft != null ? `${Math.floor(secsLeft / 60)}:${String(secsLeft % 60).padStart(2, '0')}` : '—'}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {lastPlayer && !done && (
+        <div className="lastpick">
+          <Avatar p={lastPlayer} size={30} />
+          <span><strong>{teamById.get(lastPick.team_id)?.name}</strong> took <strong>{lastPlayer.name}</strong> {lastPlayer.pos} {lastPlayer.team}</span>
+          {lastPick.auto && <span className="tag">AUTO</span>}
         </div>
       )}
 
       {actErr && <div className="err">{actErr}</div>}
 
-      {/* commissioner bar */}
       {isCommish && !done && (
-        <div className="card commishbar">
-          <span className="microlabel">Commissioner</span>
+        <div className="commishbar">
           {draft.status === 'active' && <button className="btn small secondary" disabled={busy} onClick={() => commish('pause_draft')}>Pause</button>}
           {draft.status === 'paused' && <button className="btn small" disabled={busy} onClick={() => commish('resume_draft')}>Resume</button>}
-          <button className="btn small secondary" disabled={busy || picks.length === 0}
-            onClick={() => { if (window.confirm('Undo the last pick?')) commish('undo_last_pick') }}>Undo last pick</button>
+          <button className="btn small secondary" disabled={busy || !picks.length}
+            onClick={() => { if (window.confirm('Undo the last pick?')) commish('undo_last_pick') }}>Undo</button>
           {draft.status === 'active' && <button className="btn small secondary" disabled={busy} onClick={() => commish('extend_clock', { p_seconds: 30 })}>+30s</button>}
         </div>
       )}
 
-      <div className="draftgrid">
-        <div>
-          {/* the board */}
+      <div className="tabs">
+        <button className={tab === 'players' ? 'on' : ''} onClick={() => setTab('players')}>Players</button>
+        <button className={tab === 'queue' ? 'on' : ''} onClick={() => setTab('queue')}>Queue{queue.length ? ` ${queue.length}` : ''}</button>
+        <button className={tab === 'roster' ? 'on' : ''} onClick={() => setTab('roster')}>My team</button>
+        <button className={tab === 'board' ? 'on' : ''} onClick={() => setTab('board')}>Board</button>
+      </div>
+
+      {tab === 'players' && (
+        <div className="panel">
+          {playersErr && <div className="err">Players failed to load: {playersErr}
+            <button className="btn small" onClick={() => window.location.reload()}>Reload</button></div>}
+          {!players && !playersErr && <div className="loading"><span className="spinner" />Loading players…</div>}
+          {players && (
+            <>
+              <input className="search" placeholder="Search players…" value={q} onChange={e => setQ(e.target.value)} />
+              <div className="poschips">
+                {['ALL', 'QB', 'RB', 'WR', 'TE', 'K', 'DEF'].map(p => (
+                  <button key={p} className={posFilter === p ? 'on' : ''} onClick={() => setPosFilter(p)}>{p}</button>
+                ))}
+              </div>
+              <div className="plist">
+                {available.slice(0, 60).map((p) => (
+                  <div className="prow tappable" key={p.id} onClick={() => setConfirmP(p)}>
+                    <div className="prank">{p.pos}{p.prank ?? ''}</div>
+                    <Avatar p={p} size={42} />
+                    <div className="pinfo">
+                      <div className="pname">
+                        {p.name}
+                        {p.inj && <span className="injdot" title={p.inj}>{p.inj.slice(0, 1)}</span>}
+                      </div>
+                      <div className="pmeta">
+                        <span className={'posbadge pos-bg-' + p.pos}>{p.pos}</span>
+                        {p.team || 'FA'} · Bye {p.bye ?? '—'}
+                      </div>
+                      <div className="pline">{statLine(p, projKey)}</div>
+                    </div>
+                    <div className="pstats">
+                      <div className="pstat"><b>{p[projKey] ?? '—'}</b><span>PROJ</span></div>
+                      <div className="pstat"><b>{p.adp ?? '—'}</b><span>ADP</span></div>
+                    </div>
+                    <button className={'qbtn star' + (queueIds.has(p.id) ? ' on' : '')}
+                      onClick={e => { e.stopPropagation(); toggleQueue(p) }} title="Queue">★</button>
+                  </div>
+                ))}
+              </div>
+              {available.length > 60 && <div className="hint pad">Showing top 60 — search to narrow.</div>}
+              {!available.length && <div className="hint pad">No players match.</div>}
+            </>
+          )}
+        </div>
+      )}
+
+      {tab === 'queue' && (
+        <div className="panel">
+          {!queue.length && <div className="empty small"><strong>Queue is empty</strong>
+            <p>Star players on the Players tab. If your clock runs out, autopick takes from here first.</p></div>}
+          <div className="plist">
+            {queue.map((x, i) => {
+              const p = playerById.get(x.player_id)
+              const gone = takenIds.has(x.player_id)
+              if (!p) return null
+              return (
+                <div className={'prow' + (gone ? ' gone' : '')} key={x.player_id}>
+                  <div className="prank">{i + 1}</div>
+                  <Avatar p={p} size={38} />
+                  <div className="pinfo">
+                    <div className="pname">{p.name}</div>
+                    <div className="pmeta"><span className={'posbadge pos-bg-' + p.pos}>{p.pos}</span>{p.team || 'FA'}{gone ? ' · taken' : ''}</div>
+                  </div>
+                  <button className="qbtn" onClick={() => toggleQueue(p)}>✕</button>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {tab === 'roster' && (
+        <div className="panel">
+          {!myTeam && <div className="hint pad">You're watching this draft — you don't have a team in it.</div>}
+          {myTeam && !myPicks.length && <div className="empty small"><strong>No picks yet</strong><p>Your roster builds here as you draft.</p></div>}
+          <div className="plist">
+            {myPicks.map(pk => {
+              const p = playerById.get(pk.player_id)
+              if (!p) return null
+              return (
+                <div className="prow" key={pk.id}>
+                  <div className="prank">R{roundOfPick(pk.pick_no, league.num_teams)}</div>
+                  <Avatar p={p} size={42} />
+                  <div className="pinfo">
+                    <div className="pname">{p.name}</div>
+                    <div className="pmeta"><span className={'posbadge pos-bg-' + p.pos}>{p.pos}</span>{p.team || 'FA'} · Bye {p.bye ?? '—'}</div>
+                  </div>
+                  <div className="pstats"><div className="pstat"><b>{p[projKey] ?? '—'}</b><span>PROJ</span></div></div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {tab === 'board' && (
+        <div className="panel nopad">
           <div className="boardscroll">
             <table className="board">
-              <thead>
-                <tr>
-                  <th></th>
-                  {teams.map(t => <th key={t.id}>{t.draft_slot}. {t.name.slice(0, 12)}</th>)}
-                </tr>
-              </thead>
+              <thead><tr><th className="rc"></th>
+                {teams.map(t => <th key={t.id}>{t.name.slice(0, 11)}</th>)}
+              </tr></thead>
               <tbody>
                 {Array.from({ length: league.rounds }, (_, r) => r + 1).map(round => (
                   <tr key={round}>
-                    <td className="roundcell">R{round}</td>
+                    <td className="rc">{round}</td>
                     {teams.map(t => {
-                      // overall pick number for this cell
                       const inRound = round % 2 === 1 ? t.draft_slot : league.num_teams - t.draft_slot + 1
                       const pickNo = (round - 1) * league.num_teams + inRound
                       const pk = pickByNo.get(pickNo)
                       const pl = pk ? playerById.get(pk.player_id) : null
-                      const isCurrent = !done && pickNo === draft.current_pick
+                      const cur = !done && pickNo === draft.current_pick
                       return (
-                        <td key={t.id} className={(isCurrent ? 'current ' : '') + (pk && pk.auto ? 'autopicked' : '')}>
-                          {pk && pl ? (
-                            <>
-                              <span className="pickname">{pl.name}</span>
-                              <span className="pickmeta"><span className={'pos-' + pl.pos}>{pl.pos}</span> {pl.team || 'FA'} · {pickNo}</span>
-                            </>
-                          ) : pk ? (
-                            <span className="pickname">{pk.player_id}</span>
-                          ) : (
-                            <span className="pickmeta">{pickNo}</span>
-                          )}
+                        <td key={t.id} className={(cur ? 'current ' : '') + (pl ? 'filled pos-bd-' + pl.pos : '')}>
+                          {pl ? (<>
+                            <span className="bname">{pl.name}</span>
+                            <span className="bmeta">{pl.pos} · {pl.team || 'FA'}</span>
+                          </>) : <span className="bmeta">{pickNo}</span>}
                         </td>
                       )
                     })}
@@ -667,129 +648,16 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch }) {
             </table>
           </div>
         </div>
+      )}
 
-        <div>
-          {/* tabs: players / queue / roster / feed */}
-          <div className="tabs" style={{ marginTop: 12 }}>
-            <button className={tab === 'players' ? 'on' : ''} onClick={() => setTab('players')}>Players</button>
-            <button className={tab === 'queue' ? 'on' : ''} onClick={() => setTab('queue')}>Queue{queue.length ? ` (${queue.length})` : ''}</button>
-            <button className={tab === 'roster' ? 'on' : ''} onClick={() => setTab('roster')}>My team</button>
-            <button className={tab === 'feed' ? 'on' : ''} onClick={() => setTab('feed')}>Feed</button>
-          </div>
-
-          {tab === 'players' && (
-            <div className="card">
-              {playersErr && <div className="err">Players failed to load: {playersErr} <button className="btn small" onClick={() => window.location.reload()}>Reload</button></div>}
-              {!players && !playersErr && <div className="loading"><span className="spinner" />Loading players…</div>}
-              {players && (
-                <>
-                  <div className="searchrow">
-                    <input placeholder="Search player or team…" value={q} onChange={e => setQ(e.target.value)} />
-                  </div>
-                  <div className="poschips" style={{ marginBottom: 8 }}>
-                    {['ALL', 'QB', 'RB', 'WR', 'TE', 'K', 'DEF'].map(p => (
-                      <button key={p} className={posFilter === p ? 'on' : ''} onClick={() => setPosFilter(p)}>{p}</button>
-                    ))}
-                  </div>
-                  {available.slice(0, 60).map(p => (
-                    <div className="playerrow" key={p.id}>
-                      <div className="pinfo">
-                        <div className="pname">{p.name}</div>
-                        <div className="pmeta">
-                          <span className={'pos-' + p.pos}>{p.pos}</span> {p.team || 'FA'} · Bye {p.bye ?? '—'}
-                        </div>
-                      </div>
-                      <div className="pnum"><span className="microlabel">ADP</span>{p.adp ?? '—'}</div>
-                      <div className="pnum"><span className="microlabel">Proj</span>{p[projKey] ?? '—'}</div>
-                      <div className="rowbtns">
-                        <button className={'qbtn' + (queueIds.has(p.id) ? ' on' : '')} title="Queue" onClick={() => toggleQueue(p)}>★</button>
-                        <button className="draftbtn" disabled={!myTurn || busy} onClick={() => setConfirmP(p)}>DRAFT</button>
-                      </div>
-                    </div>
-                  ))}
-                  {available.length > 60 && <div style={{ padding: 8, color: 'var(--dim)', fontSize: 13 }}>Showing top 60 — search to narrow.</div>}
-                  {available.length === 0 && <div style={{ padding: 8, color: 'var(--dim)' }}>No players match.</div>}
-                </>
-              )}
-            </div>
-          )}
-
-          {tab === 'queue' && (
-            <div className="card">
-              {queue.length === 0 && <div style={{ color: 'var(--dim)' }}>Star players in the Players tab. If the clock runs out on you, autopick takes from your queue first.</div>}
-              {queue.map((x, i) => {
-                const p = playerById.get(x.player_id)
-                const gone = takenIds.has(x.player_id)
-                return (
-                  <div className="qrow" key={x.player_id} style={gone ? { opacity: 0.4, textDecoration: 'line-through' } : {}}>
-                    <div className="qrank">{i + 1}</div>
-                    <div className="qname">{p ? p.name : x.player_id}</div>
-                    <div className="meta">{p ? `${p.pos} ${p.team || 'FA'}` : ''}{gone ? ' · taken' : ''}</div>
-                    <button className="qbtn" onClick={() => moveQueue(x, -1)} disabled={i === 0}>↑</button>
-                    <button className="qbtn" onClick={() => moveQueue(x, 1)} disabled={i === queue.length - 1}>↓</button>
-                    <button className="qbtn" onClick={() => toggleQueue({ id: x.player_id })}>✕</button>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-
-          {tab === 'roster' && (
-            <div className="card">
-              {!myTeam && <div style={{ color: 'var(--dim)' }}>You're viewing this draft — you don't have a team in it.</div>}
-              {myTeam && myPicks.length === 0 && <div style={{ color: 'var(--dim)' }}>No picks yet. Your roster builds here as you draft.</div>}
-              {myPicks.map(pk => {
-                const p = playerById.get(pk.player_id)
-                return (
-                  <div className="rosterslot" key={pk.id}>
-                    <span className={'rpos ' + (p ? 'pos-' + p.pos : '')}>{p ? p.pos : ''}</span>
-                    <span className="rname">{p ? p.name : pk.player_id}</span>
-                    <span className="meta" style={{ color: 'var(--dim)', fontSize: 12 }}>
-                      {p ? (p.team || 'FA') + ' · Bye ' + (p.bye ?? '—') : ''} · R{roundOfPick(pk.pick_no, league.num_teams)}
-                    </span>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-
-          {tab === 'feed' && (
-            <div className="card">
-              {picks.length === 0 && <div style={{ color: 'var(--dim)' }}>Picks land here as they happen.</div>}
-              {[...picks].reverse().slice(0, 40).map(pk => {
-                const p = playerById.get(pk.player_id)
-                const t = teamById.get(pk.team_id)
-                return (
-                  <div className="feeditem" key={pk.id}>
-                    <span className="microlabel">R{roundOfPick(pk.pick_no, league.num_teams)}·{pickInRound(pk.pick_no, league.num_teams)}</span>
-                    <strong>{t ? t.name : '?'}</strong> selected <strong>{p ? p.name : pk.player_id}</strong>
-                    {p && <span style={{ color: 'var(--dim)' }}> {p.pos} {p.team || 'FA'}</span>}
-                    {pk.auto && <span style={{ color: 'var(--dim)' }}> (auto)</span>}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* confirm modal */}
       {confirmP && (
-        <div className="modalback" onClick={() => !busy && setConfirmP(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <h3>{confirmP.name}</h3>
-            <div className="meta">
-              <span className={'pos-' + confirmP.pos}>{confirmP.pos}</span> {confirmP.team || 'FA'} · Bye {confirmP.bye ?? '—'} ·
-              Proj {confirmP[projKey] ?? '—'} · ADP {confirmP.adp ?? '—'}
-            </div>
-            <div className="btnrow">
-              <button className="btn secondary" disabled={busy} onClick={() => setConfirmP(null)}>Cancel</button>
-              <button className="btn danger" disabled={busy || !myTurn} onClick={() => doPick(confirmP)}>
-                {busy ? 'Drafting…' : 'Draft him'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <PlayerCard
+          p={confirmP} projKey={projKey} myTurn={myTurn} busy={busy}
+          queued={queueIds.has(confirmP.id)}
+          onQueue={() => toggleQueue(confirmP)}
+          onDraft={() => doPick(confirmP)}
+          onClose={() => setConfirmP(null)}
+        />
       )}
     </div>
   )
