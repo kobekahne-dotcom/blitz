@@ -3,6 +3,7 @@ import { supabase, ensureSession } from './supabase.js'
 import { slotForPick, roundOfPick, pickInRound } from './snake.js'
 import Home from './Home.jsx'
 import PlayerCard from './PlayerCard.jsx'
+import Season from './Season.jsx'
 
 const go = (h) => { window.location.hash = h }
 
@@ -134,6 +135,7 @@ export default function App() {
 function League({ leagueId, uid }) {
   const [state, setState] = useState({ phase: 'loading' })
   const [connIssue, setConnIssue] = useState(false)
+  const [showBoard, setShowBoard] = useState(false)
   const stateRef = useRef(state); stateRef.current = state
 
   const refetch = useCallback(async () => {
@@ -195,10 +197,40 @@ function League({ leagueId, uid }) {
   )
 
   const { league, teams, draft, picks } = state
-  return draft.status === 'pending'
-    ? <Lobby league={league} teams={teams} uid={uid} connIssue={connIssue} />
-    : <DraftRoom league={league} teams={teams} draft={draft} picks={picks} uid={uid}
-        connIssue={connIssue} refetch={refetch} />
+  if (draft.status === 'pending') return <Lobby league={league} teams={teams} uid={uid} connIssue={connIssue} />
+  if (draft.status === 'complete' && !showBoard) {
+    return <SeasonWrap league={league} teams={teams} draft={draft} uid={uid}
+             goDraft={() => setShowBoard(true)} />
+  }
+  return <DraftRoom league={league} teams={teams} draft={draft} picks={picks} uid={uid}
+    connIssue={connIssue} refetch={refetch}
+    backToSeason={draft.status === 'complete' ? () => setShowBoard(false) : null} />
+}
+
+/* ============================================================
+   SEASON wrapper — loads players once, owns the player card
+   ============================================================ */
+function SeasonWrap({ league, teams, draft, uid, goDraft }) {
+  const [players, setPlayers] = useState(null)
+  const [card, setCard] = useState(null)
+  const projKey = league.scoring === 'ppr' ? 'ppr' : league.scoring === 'half' ? 'half' : 'std'
+
+  useEffect(() => {
+    supabase.from('players').select('*').then(({ data }) => setPlayers(data || []))
+  }, [])
+
+  if (!players) return <div className="loading"><span className="spinner" />Loading…</div>
+  return (
+    <>
+      <Season league={league} teams={teams} draft={draft} uid={uid} players={players}
+        onOpenPlayer={setCard} goDraft={goDraft} />
+      {card && (
+        <PlayerCard p={card} projKey={projKey} myTurn={false} busy={false}
+          queued={false} onQueue={() => {}} onDraft={() => {}}
+          onClose={() => setCard(null)} />
+      )}
+    </>
+  )
 }
 
 /* ============================================================
@@ -334,7 +366,7 @@ function statLine(p, projKey) {
 
 const BOT_CAP = { QB: 2, RB: 6, WR: 7, TE: 2, K: 1, DEF: 1 }
 
-function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch }) {
+function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backToSeason }) {
   const [players, setPlayers] = useState(null)
   const [playersErr, setPlayersErr] = useState(null)
   const [tab, setTab] = useState('players')
@@ -484,7 +516,13 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch }) {
 
       {/* ---- clock ---- */}
       {done ? (
-        <div className="statusband complete">Draft complete — {picks.length} picks. Your roster is below.</div>
+        <div className="donebar">
+          <div>
+            <strong>Draft complete</strong>
+            <span>{picks.length} picks · your roster is set</span>
+          </div>
+          {backToSeason && <button className="btn small" onClick={backToSeason}>Go to my team</button>}
+        </div>
       ) : draft.status === 'paused' ? (
         <div className="statusband paused">Paused by the commissioner.</div>
       ) : (
