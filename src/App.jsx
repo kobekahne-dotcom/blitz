@@ -364,6 +364,31 @@ function statLine(p, projKey) {
   return "'25: " + parts.join(' · ')
 }
 
+
+/* Lay a drafted roster out as a lineup: fixed slots first (best projection
+   into each), then flex from leftover RB/WR/TE, then bench. Empty slots stay
+   visible so you can see what you still owe. */
+function buildSlots(roster, rosterCfg, projKey) {
+  const cfg = rosterCfg || { QB:1, RB:2, WR:2, TE:1, FLEX:1, K:1, DEF:1 }
+  const pool = [...roster].sort((a, b) => (b[projKey] || 0) - (a[projKey] || 0))
+  const used = new Set()
+  const out = []
+  for (const pos of ['QB','RB','WR','TE','K','DEF']) {
+    for (let i = 0; i < (cfg[pos] || 0); i++) {
+      const p = pool.find(x => x.pos === pos && !used.has(x.id))
+      if (p) used.add(p.id)
+      out.push({ slot: pos, player: p || null })
+    }
+  }
+  for (let i = 0; i < (cfg.FLEX || 0); i++) {
+    const p = pool.find(x => ['RB','WR','TE'].includes(x.pos) && !used.has(x.id))
+    if (p) used.add(p.id)
+    out.push({ slot: 'FLEX', player: p || null })
+  }
+  for (const p of pool) if (!used.has(p.id)) out.push({ slot: 'BN', player: p })
+  return out
+}
+
 const BOT_CAP = { QB: 2, RB: 6, WR: 7, TE: 2, K: 1, DEF: 1 }
 
 function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backToSeason }) {
@@ -669,24 +694,62 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
       {tab === 'roster' && (
         <div>
           {!myTeam && <div className="hint pad">You're watching this draft — you don't have a team in it.</div>}
-          {myTeam && !myPicks.length && <div className="empty"><strong>No picks yet</strong><p>Your roster builds here as you draft.</p></div>}
-          <div className="plist">
-            {myPicks.map(pk => {
-              const p = playerById.get(pk.player_id)
-              if (!p) return null
-              return (
-                <div className="row nopad" key={pk.id}>
-                  <div className="rankcell">R{roundOfPick(pk.pick_no, league.num_teams)}</div>
-                  <Avatar p={p} size={38} />
-                  <div className="who">
-                    <div className="nm">{p.name}<span className={'pos pos-' + p.pos}>{p.pos}</span></div>
-                    <div className="sub">{p.team || 'FA'}<span className="dot">·</span>Bye {p.bye ?? '—'}</div>
-                  </div>
-                  <div className="nums"><div className="num"><b>{p[projKey] ?? '—'}</b><s>PROJ</s></div></div>
+          {myTeam && (() => {
+            const roster = myPicks.map(pk => playerById.get(pk.player_id)).filter(Boolean)
+            const roundOf = {}
+            myPicks.forEach(pk => { roundOf[pk.player_id] = roundOfPick(pk.pick_no, league.num_teams) })
+            const slots = buildSlots(roster, league.roster, projKey)
+            const starters = slots.filter(x => x.slot !== 'BN')
+            const bench = slots.filter(x => x.slot === 'BN')
+            const filled = starters.filter(x => x.player).length
+            return (
+              <>
+                <div className="lineuptot">
+                  <span className="microlabel">Starters · {filled} of {starters.length} filled</span>
+                  <b>{roster.length}<span style={{ fontSize: 11, color: 'var(--dim2)' }}> drafted</span></b>
                 </div>
-              )
-            })}
-          </div>
+                {starters.map((sl, i) => (
+                  <div className={'row nopad' + (sl.player ? '' : ' dim')} key={sl.slot + i}
+                    onClick={() => sl.player && setConfirmP(sl.player)}>
+                    <div className="slotpill">{sl.slot}</div>
+                    {sl.player ? <Avatar p={sl.player} size={38} />
+                      : <div className="pic"><span className="ph">—</span></div>}
+                    <div className="who">
+                      {sl.player ? (<>
+                        <div className="nm">{sl.player.name}<span className={'pos pos-' + sl.player.pos}>{sl.player.pos}</span></div>
+                        <div className="sub">
+                          {sl.player.team || 'FA'}<span className="dot">·</span>Bye {sl.player.bye ?? '—'}
+                          <span className="dot">·</span>R{roundOf[sl.player.id]}
+                        </div>
+                      </>) : (<>
+                        <div className="nm" style={{ color: 'var(--dim2)' }}>Empty</div>
+                        <div className="sub">still need a {sl.slot === 'FLEX' ? 'RB/WR/TE' : sl.slot}</div>
+                      </>)}
+                    </div>
+                    <div className="nums"><div className="num"><b>{sl.player?.[projKey] ?? '—'}</b><s>PROJ</s></div></div>
+                  </div>
+                ))}
+                {bench.length > 0 && (
+                  <div className="sect"><h2>Bench</h2><span className="right">{bench.length}</span></div>
+                )}
+                {bench.map((sl, i) => (
+                  <div className="row nopad tap" key={'bn' + i} onClick={() => setConfirmP(sl.player)}>
+                    <div className="slotpill bn">BN</div>
+                    <Avatar p={sl.player} size={38} />
+                    <div className="who">
+                      <div className="nm">{sl.player.name}<span className={'pos pos-' + sl.player.pos}>{sl.player.pos}</span></div>
+                      <div className="sub">
+                        {sl.player.team || 'FA'}<span className="dot">·</span>Bye {sl.player.bye ?? '—'}
+                        <span className="dot">·</span>R{roundOf[sl.player.id]}
+                      </div>
+                    </div>
+                    <div className="nums"><div className="num"><b>{sl.player[projKey] ?? '—'}</b><s>PROJ</s></div></div>
+                  </div>
+                ))}
+                {!roster.length && <div className="empty"><strong>No picks yet</strong><p>Your lineup fills in here as you draft.</p></div>}
+              </>
+            )
+          })()}
         </div>
       )}
 

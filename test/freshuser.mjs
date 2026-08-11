@@ -35,7 +35,7 @@ console.log('\n=== 1. brand-new user, mock draft (what Wyatt did) ===')
 const wyatt = await newUser('wyatt')
 ok('fresh anonymous sign-in works', !!wyatt.tok)
 
-const players = await sel(wyatt, 'players?select=id,name,pos,prank&order=adp.asc&limit=300')
+const players = await sel(wyatt, 'players?select=id,name,pos,prank&order=adp.asc.nullslast&limit=400')
 ok('player list loads for a brand-new user', players.length > 200, `${players.length}`)
 ok('players have stat columns from patch 4', players[0] && players[0].prank != null, JSON.stringify(players[0] || {}))
 
