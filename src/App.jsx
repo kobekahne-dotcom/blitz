@@ -10,7 +10,7 @@ const go = (h) => { window.location.hash = h }
 const headshot = id => `https://sleepercdn.com/content/nfl/players/${id}.jpg`
 const teamLogo = t => t ? `https://sleepercdn.com/images/team_logos/nfl/${t.toLowerCase()}.png` : null
 
-function Avatar({ p, size = 40 }) {
+function Avatar({ p, size = 40, eager = false }) {
   const [failed, setFailed] = useState(false)
   const isDef = p.pos === 'DEF'
   const src = isDef ? teamLogo(p.team) : headshot(p.id)
@@ -23,7 +23,7 @@ function Avatar({ p, size = 40 }) {
   }
   return (
     <div className={'avatar' + (isDef ? ' logo' : '')} style={{ width: size, height: size }}>
-      <img src={src} alt="" width={size} height={size} loading="lazy" onError={() => setFailed(true)} />
+      <img src={src} alt="" width={size} height={size} loading={eager ? "eager" : "lazy"} onError={() => setFailed(true)} />
     </div>
   )
 }
@@ -536,10 +536,10 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch }) {
                 ))}
               </div>
               <div className="plist">
-                {available.slice(0, 60).map((p) => (
+                {available.slice(0, 60).map((p, i) => (
                   <div className="prow tappable" key={p.id} onClick={() => setConfirmP(p)}>
                     <div className="prank">{p.pos}{p.prank ?? ''}</div>
-                    <Avatar p={p} size={42} />
+                    <Avatar p={p} size={42} eager={i < 15} />
                     <div className="pinfo">
                       <div className="pname">
                         {p.name}
