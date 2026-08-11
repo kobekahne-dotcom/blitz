@@ -7,6 +7,8 @@ export default function Home({ uid, prefillCode }) {
   const [leagues, setLeagues] = useState(null)
   const [sheet, setSheet] = useState(prefillCode ? 'join' : null)
   const [err, setErr] = useState(null)
+  const [confirmDel, setConfirmDel] = useState(null)
+  const [busyDel, setBusyDel] = useState(false)
 
   const load = useCallback(async () => {
     const { data: teams } = await supabase
@@ -26,9 +28,21 @@ export default function Home({ uid, prefillCode }) {
   useEffect(() => { load() }, [load])
 
   const remove = async (l) => {
-    if (!window.confirm(`Delete "${l.name}"? This wipes it for everyone.`)) return
+    setBusyDel(true); setErr(null)
     const { error } = await supabase.rpc('delete_league', { p_league_id: l.id })
+    setBusyDel(false); setConfirmDel(null)
     if (error) setErr(error.message); else load()
+  }
+
+  const removeAllMocks = async () => {
+    setBusyDel(true); setErr(null)
+    const mocks = (leagues || []).filter(l => l.is_mock && l.commissioner_uid === uid)
+    for (const m of mocks) {
+      const { error } = await supabase.rpc('delete_league', { p_league_id: m.id })
+      if (error) { setErr(error.message); break }
+    }
+    setBusyDel(false); setConfirmDel(null)
+    load()
   }
 
   return (
@@ -44,7 +58,9 @@ export default function Home({ uid, prefillCode }) {
 
       <div className="sect">
         <h2>My Leagues</h2>
-        {leagues && <span className="right">{leagues.length}</span>}
+        {leagues && leagues.some(l => l.is_mock && l.commissioner_uid === uid)
+          ? <button className="linkbtn" onClick={() => setConfirmDel('ALL_MOCKS')}>Clear mock drafts</button>
+          : leagues && <span className="right">{leagues.length}</span>}
       </div>
 
       {leagues === null && <div className="loading"><span className="spinner" />Loading</div>}
@@ -77,13 +93,34 @@ export default function Home({ uid, prefillCode }) {
               <div className={'lgstate s-' + st}>{label}</div>
             </div>
             {l.commissioner_uid === uid && (
-              <button className="xbtn" onClick={e => { e.stopPropagation(); remove(l) }}>✕</button>
+              <button className="delbtn" aria-label={'Delete ' + l.name}
+                onClick={e => { e.stopPropagation(); setConfirmDel(l) }}>Delete</button>
             )}
           </div>
         )
       })}
 
       {sheet && <Sheet kind={sheet} close={() => setSheet(null)} prefillCode={prefillCode} />}
+
+      {confirmDel && (
+        <div className="sheetback" onClick={() => !busyDel && setConfirmDel(null)}>
+          <div className="sheet" onClick={e => e.stopPropagation()}>
+            <div className="sheet-grab" />
+            <h3>{confirmDel === 'ALL_MOCKS' ? 'Clear mock drafts?' : 'Delete this league?'}</h3>
+            <p className="sheet-note">
+              {confirmDel === 'ALL_MOCKS'
+                ? `This removes every mock draft you created — ${(leagues || []).filter(l => l.is_mock && l.commissioner_uid === uid).length} of them. Real leagues are untouched.`
+                : `"${confirmDel.name}" and its draft will be gone for everyone in it. This can't be undone.`}
+            </p>
+            <button className="btn block big danger" disabled={busyDel}
+              onClick={() => confirmDel === 'ALL_MOCKS' ? removeAllMocks() : remove(confirmDel)}>
+              {busyDel ? 'Deleting…' : (confirmDel === 'ALL_MOCKS' ? 'Clear them' : 'Delete')}
+            </button>
+            <button className="btn block secondary" disabled={busyDel}
+              onClick={() => setConfirmDel(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
