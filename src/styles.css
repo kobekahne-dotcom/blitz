@@ -428,3 +428,50 @@ h1, h2, h3 { font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; }
 .togglerow input { width: 20px; height: 20px; accent-color: var(--green); flex: 0 0 auto; margin-top: 1px; }
 .togglerow strong { display: block; font-size: 13.5px; font-weight: 600; }
 .togglerow small { color: var(--dim2); font-size: 12px; }
+
+/* ---------- upcoming picks strip (ESPN-style) ---------- */
+.pickstrip {
+  display: flex; gap: 0; overflow-x: auto; -webkit-overflow-scrolling: touch;
+  border-bottom: 1px solid var(--line); background: var(--surface);
+}
+.ps-round {
+  flex: 0 0 auto; display: grid; place-items: center; padding: 0 12px;
+  font-size: 11px; font-weight: 800; color: var(--dim2);
+  border-right: 1px solid var(--line);
+}
+.ps-cell {
+  flex: 0 0 auto; min-width: 108px; padding: 9px 12px;
+  border-right: 1px solid var(--line);
+}
+.ps-cell.mine { background: #0C2A14; box-shadow: inset 0 -3px 0 var(--green); }
+.ps-no { font-size: 10.5px; font-weight: 700; color: var(--dim2); }
+.ps-cell.mine .ps-no { color: var(--green); }
+.ps-team {
+  font-size: 12.5px; font-weight: 600; margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 92px;
+}
+
+/* ---------- column header ---------- */
+.listhead {
+  display: flex; align-items: center; gap: 11px;
+  padding: 8px 16px 7px; border-bottom: 1px solid var(--line2);
+  font-size: 9.5px; font-weight: 800; letter-spacing: .07em; color: var(--dim2);
+}
+.listhead .lh-rk { min-width: 34px; text-align: center; }
+.listhead .lh-pl { flex: 1; }
+.listhead .lh-n { min-width: 54px; text-align: right; }
+
+/* ---------- "your pick" divider ---------- */
+.pickmarker {
+  display: flex; align-items: center; justify-content: center;
+  padding: 0; height: 26px; position: relative;
+}
+.pickmarker::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 50%;
+  height: 1px; background: var(--green); opacity: .55;
+}
+.pickmarker span {
+  position: relative; background: var(--bg); border: 1px solid var(--green);
+  color: var(--green); border-radius: 999px; padding: 2px 12px;
+  font-size: 10px; font-weight: 800; letter-spacing: .05em;
+}

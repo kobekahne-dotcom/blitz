@@ -410,6 +410,30 @@ const posOf = (k, flexTE) => {
   return f.pos
 }
 
+
+/* ESPN puts a line in the player list showing where your next picks land,
+   so you can see who is realistically gone before your turn comes back.
+   A player is "expected gone" when their ADP is earlier than that pick. */
+function withMarkers(list, upcoming, teams) {
+  if (!upcoming || !upcoming.length) return list
+  const out = []
+  let mi = 0
+  for (const p of list) {
+    while (mi < upcoming.length && (p.adp ?? 9999) > upcoming[mi].pick) {
+      const u = upcoming[mi]
+      out.push({ __marker: true, pick: u.pick, round: u.round, inRound: u.inRound })
+      mi++
+    }
+    out.push(p)
+  }
+  while (mi < upcoming.length) {
+    const u = upcoming[mi]
+    out.push({ __marker: true, pick: u.pick, round: u.round, inRound: u.inRound })
+    mi++
+  }
+  return out
+}
+
 const BOT_CAP = { QB: 2, RB: 6, WR: 7, TE: 2, K: 1, DEF: 1 }
 
 function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backToSeason }) {
@@ -568,6 +592,29 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
     if (error) setActErr(error.message)
   }
 
+  // my next few pick numbers, for the in-list markers and the top strip
+  const myUpcoming = useMemo(() => {
+    if (!myTeam?.draft_slot) return []
+    const out = []
+    for (let pk = draft.current_pick; pk <= totalPicks && out.length < 3; pk++) {
+      if (slotForPick(pk, league.num_teams) === myTeam.draft_slot) {
+        out.push({ pick: pk, round: roundOfPick(pk, league.num_teams),
+                   inRound: pickInRound(pk, league.num_teams) })
+      }
+    }
+    return out
+  }, [draft.current_pick, myTeam?.draft_slot, league.num_teams, totalPicks])
+
+  // the next handful of picks overall, for the strip across the top
+  const upcomingPicks = useMemo(() => {
+    const out = []
+    for (let pk = draft.current_pick; pk <= totalPicks && out.length < 8; pk++) {
+      const t = teams.find(x => x.draft_slot === slotForPick(pk, league.num_teams))
+      out.push({ pick: pk, team: t, mine: t && myTeam && t.id === myTeam.id })
+    }
+    return out
+  }, [draft.current_pick, teams, league.num_teams, totalPicks, myTeam?.id])
+
   const queueIds = new Set(queue.map(x => x.player_id))
   const myPicks = picks.filter(p => myTeam && p.team_id === myTeam.id)
   const lastPick = picks[picks.length - 1]
@@ -609,6 +656,18 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
           <Avatar p={lastPlayer} size={30} />
           <span><strong>{teamById.get(lastPick.team_id)?.name}</strong> took <strong>{lastPlayer.name}</strong> {lastPlayer.pos} {lastPlayer.team}</span>
           {lastPick.auto && <span className="tag">AUTO</span>}
+        </div>
+      )}
+
+      {!done && upcomingPicks.length > 0 && (
+        <div className="pickstrip">
+          <div className="ps-round">R{roundOfPick(draft.current_pick, league.num_teams)}</div>
+          {upcomingPicks.map(u => (
+            <div className={'ps-cell' + (u.mine ? ' mine' : '')} key={u.pick}>
+              <div className="ps-no">Pick {u.pick}</div>
+              <div className="ps-team">{u.team ? u.team.name : '—'}</div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -660,8 +719,19 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
                     onClick={() => setPosKey(f.k)}>{f.label}</button>
                 ))}
               </div>
+              <div className="listhead">
+                <span className="lh-rk">RK</span>
+                <span className="lh-pl">PLAYER</span>
+                <span className="lh-n">PROJ</span>
+                <span className="lh-n">ADP</span>
+              </div>
               <div className="plist">
-                {available.slice(0, shown).map((p, i) => (
+                {withMarkers(available.slice(0, shown), myUpcoming, league.num_teams).map((p, i) => (
+                  p.__marker ? (
+                    <div className="pickmarker" key={'mk' + p.pick}>
+                      <span>YOUR PICK (R{p.round}, P{p.inRound})</span>
+                    </div>
+                  ) : (
                   <div className="row tap nopad" key={p.id} onClick={() => setConfirmP(p)}>
                     <div className="rankcell">{p.pos}{p.prank ?? ''}</div>
                     <Avatar p={p} size={38} eager={i < 15} />
@@ -685,6 +755,7 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
                       <div className="num"><b>{p.adp ?? '—'}</b><s>ADP</s></div>
                     </div>
                   </div>
+                  )
                 ))}
               </div>
               {available.length > shown && (
