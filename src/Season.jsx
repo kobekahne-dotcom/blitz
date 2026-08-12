@@ -114,6 +114,12 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
   const [sel, setSel] = useState(null)          // player id selected for a swap
+  const [roster, setRoster] = useState(null)
+  const [waivers, setWaivers] = useState([])
+  const [claims, setClaims] = useState([])
+  const [priority, setPriority] = useState([])
+  const [txErr, setTxErr] = useState(null)
+  const [txBusy, setTxBusy] = useState(false)
 
   const myTeam = teams.find(t => t.owner_uid === uid)
   const byId = useMemo(() => new Map((players || []).map(p => [p.id, p])), [players])
@@ -140,6 +146,37 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
       .then(({ data }) => setMatchups(data || []))
   }, [draft.id, league.id])
 
+  /* The roster is a real table now, not the draft picks. Seed it once from
+     the draft the first time anyone opens the season screen. */
+  const loadRoster = useCallback(async () => {
+    let { data } = await supabase.from('roster_players')
+      .select('team_id,player_id,acquired').eq('league_id', league.id)
+    if (!data || !data.length) {
+      await supabase.rpc('seed_rosters', { p_league_id: league.id })
+      const again = await supabase.from('roster_players')
+        .select('team_id,player_id,acquired').eq('league_id', league.id)
+      data = again.data || []
+    }
+    setRoster(data || [])
+    const [w, c, t] = await Promise.all([
+      supabase.from('waiver_players').select('player_id,clears_at').eq('league_id', league.id),
+      supabase.from('waiver_claims').select('*').eq('league_id', league.id).eq('status', 'pending'),
+      supabase.from('teams').select('id,name,waiver_priority').eq('league_id', league.id),
+    ])
+    setWaivers(w.data || []); setClaims(c.data || []); setPriority(t.data || [])
+  }, [league.id])
+  useEffect(() => { loadRoster() }, [loadRoster])
+
+  /* Claims settle in the database on a heartbeat, the same way the draft
+     clock does — never on a browser's idea of what time it is. */
+  useEffect(() => {
+    const iv = setInterval(() => {
+      supabase.rpc('process_waivers', { p_league_id: league.id })
+        .then(({ data }) => { if (data?.settled) loadRoster() }).catch(() => {})
+    }, 60000)
+    return () => clearInterval(iv)
+  }, [league.id, loadRoster])
+
   const starters = (lineup || []).filter(l => l.slot !== 'BN')
   const bench = (lineup || []).filter(l => l.slot === 'BN')
   const sortSlots = arr => [...arr].sort((a, b) =>
@@ -164,10 +201,34 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
     if (error) setErr(error.message); else loadLineup()
   }
 
-  const rosterOf = (teamId) => (allPicks || [])
+  const rosterOf = (teamId) => (roster || allPicks || [])
     .filter(p => p.team_id === teamId)
     .map(p => byId.get(p.player_id)).filter(Boolean)
     .sort((a, b) => (b[projKey] || 0) - (a[projKey] || 0))
+
+  /* free / waivers / rostered, computed once for the whole player list */
+  const waiverBy = useMemo(() => new Map(waivers.map(w => [w.player_id, w.clears_at])), [waivers])
+  const ownerBy = useMemo(() => new Map((roster || []).map(r => [r.player_id, r.team_id])), [roster])
+  const claimedBy = useMemo(
+    () => new Set(claims.filter(c => c.team_id === myTeam?.id).map(c => c.player_id)), [claims, myTeam?.id])
+  const myPriority = priority.find(t => t.id === myTeam?.id)?.waiver_priority
+  const rosterFull = (roster || []).filter(r => r.team_id === myTeam?.id).length >= league.rounds
+
+  const stateOf = (id) => {
+    if (ownerBy.has(id)) return 'rostered'
+    const c = waiverBy.get(id)
+    if (c && new Date(c) > new Date()) return 'waivers'
+    return 'free'
+  }
+
+  const transact = async (fn, args) => {
+    setTxBusy(true); setTxErr(null)
+    const { error } = await supabase.rpc(fn, args)
+    setTxBusy(false)
+    if (error) { setTxErr(error.message); return false }
+    await loadRoster(); loadLineup()
+    return true
+  }
 
   /* opponent's starters for the mirrored matchup columns. Their real
      lineup is used when the database lets us read it; otherwise it is
@@ -356,7 +417,48 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
 
       {/* ---------------- PLAYERS (free agents) ---------------- */}
       {tab === 'players' && (
-        <FreeAgents players={players} allPicks={allPicks} projKey={projKey} onOpenPlayer={onOpenPlayer} />
+        <>
+          {txErr && <div className="err">{txErr}</div>}
+          <div className="wvbar">
+            <span className="microlabel">Waiver priority</span>
+            <b>{myPriority ?? '—'}<span> of {priority.length}</span></b>
+          </div>
+          {rosterFull && (
+            <div className="notice">
+              Your roster is full at {league.rounds}. Drop someone on My Team first,
+              or add here and you'll be asked who to drop.
+            </div>
+          )}
+          {claims.filter(c => c.team_id === myTeam?.id).length > 0 && (
+            <>
+              <div className="sect"><h2>Your pending claims</h2></div>
+              {claims.filter(c => c.team_id === myTeam?.id).map(c => {
+                const pl = byId.get(c.player_id), dr = byId.get(c.drop_id)
+                const when = waiverBy.get(c.player_id)
+                return (
+                  <div className="row nopad" key={c.id}>
+                    <Shot p={pl} size={34} />
+                    <div className="who">
+                      <div className="nm">{pl?.name || c.player_id}</div>
+                      <div className="sub">
+                        {dr ? `drop ${dr.name}` : 'no drop'}
+                        {when ? ` · settles ${new Date(when).toLocaleString(undefined,
+                          { weekday: 'short', hour: 'numeric', minute: '2-digit' })}` : ''}
+                      </div>
+                    </div>
+                    <button className="delbtn" disabled={txBusy}
+                      onClick={() => transact('cancel_claim', { p_claim_id: c.id })}>Cancel</button>
+                  </div>
+                )
+              })}
+            </>
+          )}
+          <FreeAgents players={players} projKey={projKey} onOpenPlayer={onOpenPlayer}
+            stateOf={stateOf} waiverBy={waiverBy} claimedBy={claimedBy}
+            busy={txBusy} rosterFull={rosterFull}
+            onAdd={p => transact('add_free_agent', { p_team_id: myTeam.id, p_player_id: p.id, p_drop_id: null })}
+            onClaim={p => transact('claim_waiver', { p_team_id: myTeam.id, p_player_id: p.id, p_drop_id: null })} />
+        </>
       )}
 
       {/* ---------------- LEAGUE ---------------- */}
@@ -394,16 +496,16 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
 }
 
 /* ---------- free agents ---------- */
-function FreeAgents({ players, allPicks, projKey, onOpenPlayer }) {
+function FreeAgents({ players, projKey, onOpenPlayer, stateOf, waiverBy, claimedBy,
+                      onAdd, onClaim, busy, rosterFull }) {
   const [q, setQ] = useState('')
   const [posKey, setPosKey] = useState('ALL')
   const [shown, setShown] = useState(75)
   useEffect(() => { setShown(75) }, [posKey, q])
-  const taken = useMemo(() => new Set((allPicks || []).map(p => p.player_id)), [allPicks])
 
   const list = useMemo(() => {
     if (!players) return []
-    let l = players.filter(p => !taken.has(p.id))
+    let l = players.filter(p => stateOf(p.id) !== 'rostered')
     const pf = posOf(posKey, false)
     if (pf) l = l.filter(p => pf.includes(p.pos))
     if (q.trim()) {
@@ -411,11 +513,11 @@ function FreeAgents({ players, allPicks, projKey, onOpenPlayer }) {
       l = l.filter(p => p.name.toLowerCase().includes(s) || (p.team || '').toLowerCase().includes(s))
     }
     return l.sort((a, b) => (b[projKey] || 0) - (a[projKey] || 0))
-  }, [players, taken, posKey, q, projKey])
+  }, [players, posKey, q, projKey, stateOf])
 
   return (
     <div>
-      <div className="sect"><h2>Free agents — {list.length} available</h2></div>
+      <div className="sect"><h2>Available — {list.length}</h2></div>
       <input className="search" placeholder="Search free agents" value={q} onChange={e => setQ(e.target.value)} />
       <div className="chips">
         {POS_FILTERS.map(f => (
@@ -436,6 +538,23 @@ function FreeAgents({ players, allPicks, projKey, onOpenPlayer }) {
                   <span className="dot">·</span>({p.bye ?? '—'})
                 </div>
               </div>
+              {(() => {
+                const st = stateOf(p.id)
+                if (st === 'waivers') {
+                  const claimed = claimedBy.has(p.id)
+                  return (
+                    <button className={'wvbtn' + (claimed ? ' on' : '')} disabled={busy || claimed}
+                      onClick={e => { e.stopPropagation(); onClaim(p) }}
+                      title={'On waivers until ' + new Date(waiverBy.get(p.id)).toLocaleString()}>
+                      {claimed ? 'CLAIMED' : 'CLAIM'}
+                    </button>
+                  )
+                }
+                return (
+                  <button className="rowbtn add" disabled={busy} title="Add"
+                    onClick={e => { e.stopPropagation(); onAdd(p) }}>+</button>
+                )
+              })()}
             </div>
             <div className="hstats">{faCells(p, projKey)}</div>
           </div>

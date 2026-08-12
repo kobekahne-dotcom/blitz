@@ -164,8 +164,10 @@ function Sheet({ kind, close, prefillCode }) {
   return (
     <div className="sheetback" onClick={() => !busy && close()}>
       <div className="sheet" onClick={e => e.stopPropagation()}>
-        <div className="sheet-grab" />
-        <button className="sheet-close" onClick={close} aria-label="Close">✕</button>
+        <div className="sheet-top">
+          <div className="sheet-grab" />
+          <button className="sheet-close" onClick={close} aria-label="Close">✕</button>
+        </div>
         <h3>{titles[kind]}</h3>
         {err && <div className="err" style={{ margin: '0 0 12px' }}>{err}</div>}
 

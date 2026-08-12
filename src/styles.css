@@ -537,9 +537,15 @@ html[data-theme="dark"] .sheetback { background: rgba(0,0,0,.7); }
 }
 .sheet.tall { max-height: 94vh; }
 .sheet h3 { font-size: 19px; margin-bottom: 12px; }
-.sheet-grab { padding: 7px 0 12px; display: flex; justify-content: center; touch-action: none; }
+/* the close button must stay reachable no matter how far the sheet is
+   scrolled — on the Usage tab the top scrolled away and took the X with it */
+.sheet-top {
+  position: sticky; top: 0; z-index: 6; background: var(--surface);
+  margin: 0 -16px; padding: 0 16px 2px;
+}
+.sheet-grab { padding: 7px 0 10px; display: flex; justify-content: center; touch-action: none; }
 .sheet-grab::after { content: ''; width: 36px; height: 4px; background: var(--line); border-radius: 99px; }
-.sheet-close { position: absolute; top: 10px; right: 12px; z-index: 5;
+.sheet-close { position: absolute; top: 4px; right: 12px; z-index: 7;
   background: var(--chipbg); border: 0; color: var(--dim);
   width: 30px; height: 30px; border-radius: 50%; font-size: 13px; display: grid; place-items: center; }
 .sheet-note { color: var(--dim); font-size: 13px; margin-bottom: 14px; }
@@ -832,3 +838,19 @@ html[data-theme="dark"] .sheetback { background: rgba(0,0,0,.7); }
   min-height: 20px; display: flex; align-items: flex-start; justify-content: center;
 }
 .advgrid b { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--ink); }
+
+/* ---------- waivers ---------- */
+.wvbar {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin: 8px 12px 0; padding: 11px 14px;
+  background: var(--surface); border-radius: 12px; box-shadow: var(--shadow);
+}
+.wvbar b { font-size: 19px; font-weight: 800; color: var(--ink2); font-variant-numeric: tabular-nums; }
+.wvbar b span { font-size: 12px; font-weight: 600; color: var(--dim); }
+.wvbtn {
+  flex: 0 0 auto; background: var(--chipbg); border: 0; color: var(--ink2);
+  border-radius: 9px; height: 31px; padding: 0 10px;
+  font-size: 10.5px; font-weight: 800; letter-spacing: .05em;
+}
+.wvbtn.on { background: var(--info-bg); color: var(--brand); }
+.wvbtn:disabled { opacity: .75; }

@@ -226,8 +226,10 @@ export default function PlayerCard({ p, projKey, myTurn, busy, onDraft, onQueue,
     <div className="sheetback" onClick={() => !busy && onClose()}>
       <div className="sheet tall" onClick={e => e.stopPropagation()}
         style={dragY ? { transform: `translateY(${dragY}px)` } : undefined}>
-        <div className="sheet-grab" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} />
-        <button className="sheet-close" onClick={onClose} aria-label="Close">✕</button>
+        <div className="sheet-top">
+          <div className="sheet-grab" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} />
+          <button className="sheet-close" onClick={onClose} aria-label="Close">✕</button>
+        </div>
 
         {/* ---- hero — faint team watermark behind, NFL-style ---- */}
         <div className="pc-hero">

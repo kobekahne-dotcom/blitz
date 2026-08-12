@@ -233,8 +233,10 @@ function EditSheet({ row, current, close, save }) {
   return (
     <div className="sheetback" onClick={() => !busy && close()}>
       <div className="sheet" onClick={e => e.stopPropagation()}>
-        <div className="sheet-grab" />
-        <button className="sheet-close" onClick={close} aria-label="Close">✕</button>
+        <div className="sheet-top">
+          <div className="sheet-grab" />
+          <button className="sheet-close" onClick={close} aria-label="Close">✕</button>
+        </div>
         <h3>{row.label}</h3>
 
         {row.type === 'choice' && (
