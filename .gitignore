@@ -3,3 +3,4 @@ dist/
 scripts/bots.json
 repo.json
 pages.json
+qa_serve/

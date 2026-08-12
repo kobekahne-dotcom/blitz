@@ -1,9 +1,84 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { supabase } from './supabase.js'
 
 const headshot = id => `https://sleepercdn.com/content/nfl/players/${id}.jpg`
 const teamLogo = t => t ? `https://sleepercdn.com/images/team_logos/nfl/${t.toLowerCase()}.png` : null
 
 const n = v => (v === null || v === undefined || v === '') ? '—' : v
+
+/* ---------- the whole career, season by season ----------
+   Ten years of real stat lines live in player_seasons (2016-2025).
+   This is the table no mainstream app gives you — the one that lets
+   you see 2019 vs 2020 vs now and form your own opinion. */
+const CAREER_COLS = {
+  QB: [['pass_yd', 'PASS YD'], ['pass_td', 'PASS TD'], ['pass_int', 'INT'], ['pass_rtg', 'RTG'],
+       ['cmp_pct', 'CMP%'], ['rush_yd', 'RUSH YD'], ['rush_td', 'RUSH TD']],
+  RB: [['rush_yd', 'RUSH YD'], ['rush_att', 'CAR'], ['rush_ypa', 'YPC'], ['rush_td', 'RUSH TD'],
+       ['rec', 'REC'], ['rec_yd', 'REC YD'], ['rec_td', 'REC TD'], ['touch', 'TOUCH']],
+  WR: [['rec', 'REC'], ['rec_tgt', 'TGT'], ['rec_yd', 'REC YD'], ['rec_ypr', 'Y/R'],
+       ['rec_td', 'REC TD'], ['tgt_share', 'TGT%'], ['snap_pct', 'SNAP%']],
+  K: [], DEF: [],
+}
+CAREER_COLS.TE = CAREER_COLS.WR
+
+function Career({ p, projKey }) {
+  const [rows, setRows] = useState(null)
+  useEffect(() => {
+    let live = true
+    supabase.from('player_seasons')
+      .select('season,team,stats')
+      .eq('player_id', p.id)
+      .order('season', { ascending: false })
+      .then(({ data, error }) => { if (live) setRows(error ? [] : (data || [])) })
+    return () => { live = false }
+  }, [p.id])
+
+  const cols = CAREER_COLS[p.pos] || []
+  const ptsKey = projKey === 'ppr' ? 'pts_ppr' : projKey === 'half' ? 'pts_half_ppr' : 'pts_std'
+
+  if (rows === null) return <div className="hint pad">Loading career…</div>
+  if (!rows.length || !cols.length) return null
+
+  return (
+    <>
+      <div className="pc-h">Career — season by season</div>
+      <div className="careerwrap">
+        <table className="career">
+          <thead>
+            <tr>
+              <th className="cseason">YEAR</th><th>TEAM</th><th>GP</th>
+              {cols.map(([k, lab]) => <th key={k}>{lab}</th>)}
+              <th>FPTS</th><th>PPG</th><th>RNK</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => {
+              const st = r.stats || {}
+              const rank = st.pos_rank_ppr
+              return (
+                <tr key={r.season}>
+                  <td className="cseason"><b>{r.season}</b></td>
+                  <td>{r.team || '—'}</td>
+                  <td>{n(st.gp)}</td>
+                  {cols.map(([k]) => <td key={k}>{n(st[k])}</td>)}
+                  <td className="cfp">{n(st[ptsKey])}</td>
+                  <td>{n(st.ppg)}</td>
+                  <td className={rank != null && rank <= 12 ? 'ctop' : ''}>
+                    {rank != null ? p.pos + rank : '—'}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="pc-source">
+        Real season totals, 2016 onward, from Sleeper's official stat feed.
+        A season a player missed entirely doesn't get a row.
+      </p>
+    </>
+  )
+}
 
 /* Which stat rows matter for which position. Only rows with real data render. */
 const SEASON_ROWS = {
@@ -66,8 +141,9 @@ export default function PlayerCard({ p, projKey, myTurn, busy, onDraft, onQueue,
         <div className="sheet-grab" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} />
         <button className="sheet-close" onClick={onClose} aria-label="Close">✕</button>
 
-        {/* ---- hero ---- */}
+        {/* ---- hero — faint team watermark behind, NFL-style ---- */}
         <div className="pc-hero">
+          {teamLogo(p.team) && <img className="pc-water" src={teamLogo(p.team)} alt="" />}
           <div className="pc-shot">
             {imgFail || isDef
               ? <div className="pic" style={{width:66,height:66}}><span className={'ph pos-' + p.pos}>{p.pos}</span></div>
@@ -84,12 +160,20 @@ export default function PlayerCard({ p, projKey, myTurn, busy, onDraft, onQueue,
           </div>
         </div>
 
-        {/* ---- headline numbers ---- */}
+        {/* ---- headline strip: labels above values, rank in the hexagon ---- */}
         <div className="pc-topstats">
-          <div><b>{p.pos}{n(p.prank)}</b><span>POS RANK</span></div>
+          <div><b>{n(p.bye)}</b><span>BYE WK</span></div>
           <div><b>{n(p[projKey])}</b><span>2026 PROJ</span></div>
+          <div className="pc-hex">
+            <div className="hex">
+              <div>
+                <span>{p.pos} RNK</span>
+                <b>{n(p.prank)}</b>
+              </div>
+            </div>
+          </div>
           <div><b>{n(p.adp)}</b><span>ADP</span></div>
-          <div><b>{n(p.bye)}</b><span>BYE</span></div>
+          <div><b>{n((p.lyd || {}).ppg)}</b><span>'25 PPG</span></div>
         </div>
 
         <div className="pc-tabs">
@@ -152,6 +236,7 @@ export default function PlayerCard({ p, projKey, myTurn, busy, onDraft, onQueue,
 
           {tab === 'stats' && (
             <>
+              <Career p={p} projKey={projKey} />
               <div className="pc-h">2025 full line</div>
               {Object.keys(ly).length ? (
                 <div className="kvgrid wide">
@@ -223,7 +308,9 @@ export default function PlayerCard({ p, projKey, myTurn, busy, onDraft, onQueue,
 
         <div className="pc-actions">
           <button className="btn secondary" onClick={onQueue}>{queued ? '★ Queued' : '☆ Queue'}</button>
-          <button className="btn big danger flex" disabled={!myTurn || busy} onClick={onDraft}>
+          {/* green, not red — in this design language red means bad news,
+              and drafting a guy is the happiest tap in the app */}
+          <button className="btn big good flex" disabled={!myTurn || busy} onClick={onDraft}>
             {busy ? 'Drafting…' : myTurn ? 'Draft him' : 'Not your turn'}
           </button>
         </div>

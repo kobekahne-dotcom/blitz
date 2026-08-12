@@ -36,6 +36,33 @@ const posOf = (k, flexTE) => {
 
 const SLOT_ORDER = ['QB', 'RB', 'WR', 'TE', 'FLEX', 'K', 'DEF', 'BN']
 
+/* 17<sup>.00</sup> — the NFL app's signature score treatment */
+const Sup = ({ v }) => {
+  if (v == null) return <>—</>
+  const [i, d] = Number(v).toFixed(2).split('.')
+  return <>{i}<sup>.{d}</sup></>
+}
+
+/* same sideways stat columns as the draft room, for the free-agent pool */
+const FA_COLS = {
+  QB: [['pass_yd', 'PASS YD'], ['pass_td', 'PASS TD'], ['pass_int', 'INT'], ['rush_yd', 'RUSH YD'], ['ppg', 'PPG']],
+  RB: [['rush_yd', 'RUSH YD'], ['ypc', 'YPC'], ['rush_td', 'RUSH TD'], ['rec', 'REC'], ['rec_yd', 'REC YD'], ['touch', 'TOUCHES'], ['ppg', 'PPG']],
+  WR: [['rec', 'REC'], ['rec_tgt', 'TAR'], ['rec_yd', 'REC YD'], ['rec_td', 'REC TD'], ['catch_pct', 'CATCH%'], ['ppg', 'PPG']],
+  K:  [['gp', 'GP'], ['ppg', 'PPG']],
+  DEF: [['gp', 'GP'], ['ppg', 'PPG']],
+}
+FA_COLS.TE = FA_COLS.WR
+const faCells = (p, projKey) => {
+  const ly = p.lyd || {}
+  const cells = [
+    ['PROJ/WK', perGame(p, projKey)],
+    ...(FA_COLS[p.pos] || []).map(([k, lab]) => ["'25 " + lab, ly[k]]),
+  ]
+  return cells.map(([lab, v]) => (
+    <div className="scell" key={lab}><s>{lab}</s><b>{v ?? '—'}</b></div>
+  ))
+}
+
 function Shot({ p, size = 40 }) {
   const [bad, setBad] = useState(false)
   // guard FIRST — a lineup can reference a player that isn't loaded, and
@@ -44,10 +71,34 @@ function Shot({ p, size = 40 }) {
     <span className="ph">?</span></div>
   const isDef = p.pos === 'DEF'
   const src = isDef ? teamLogo(p.team) : headshot(p.id)
-  if (bad || !src) return <div className="pic" style={{ width: size, height: size }}>
+  const inj = p.inj ? ' inj' : ''   // gold ring, like the real app
+  if (bad || !src) return <div className={'pic' + inj} style={{ width: size, height: size }}>
     <span className={'ph pos-' + (p.pos || '')}>{p.pos || '?'}</span></div>
-  return <div className={'pic' + (isDef ? ' logo' : '')} style={{ width: size, height: size }}>
+  return <div className={'pic' + (isDef ? ' logo' : '') + inj} style={{ width: size, height: size }}>
     <img src={src} alt="" onError={() => setBad(true)} /></div>
+}
+
+/* the bottom tab bar the real app navigates with */
+const NAV = [
+  ['team', 'Team', <path key="t" d="M12 3l8 3v5c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-3z" />],
+  ['matchup', 'Matchup', <ellipse key="m" cx="12" cy="12" rx="9" ry="5.6" transform="rotate(-32 12 12)" />],
+  ['players', 'Players', <g key="p"><circle cx="9" cy="8.5" r="3.2" /><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5" /><circle cx="17" cy="9.5" r="2.6" /><path d="M15.5 14.4c2.4.2 4.3 1.8 4.9 4.6" /></g>],
+  ['league', 'League', <g key="l"><path d="M7 4h10v4a5 5 0 0 1-10 0V4z" /><path d="M7 5H4.5a3 3 0 0 0 3 4M17 5h2.5a3 3 0 0 1-3 4M12 13v4m-4 4h8m-4-4v4" /></g>],
+]
+function BottomNav({ tab, setTab }) {
+  return (
+    <div className="bottomnav">
+      {NAV.map(([k, label, icon]) => (
+        <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+            strokeLinecap="round" strokeLinejoin="round">{icon}
+            {k === 'matchup' && <path d="M9.4 14.6l5.2-5.2M11 13l1-1m1-1l1-1" />}
+          </svg>
+          <span>{label}</span>
+        </button>
+      ))}
+    </div>
+  )
 }
 
 /* ============================================================
@@ -118,6 +169,40 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
     .map(p => byId.get(p.player_id)).filter(Boolean)
     .sort((a, b) => (b[projKey] || 0) - (a[projKey] || 0))
 
+  /* opponent's starters for the mirrored matchup columns. Their real
+     lineup is used when the database lets us read it; otherwise it is
+     synthesized from their roster (best projection into each slot) and
+     labelled as projected, never passed off as their actual lineup. */
+  const [oppStarters, setOppStarters] = useState(null)
+  useEffect(() => {
+    let live = true
+    setOppStarters(null)
+    if (!oppId) return
+    const synth = () => {
+      const cfg = league.roster || { QB: 1, RB: 2, WR: 2, TE: 1, FLEX: 1, K: 1, DEF: 1 }
+      const pool = rosterOf(oppId); const used = new Set(); const out = []
+      for (const pos of ['QB', 'RB', 'WR', 'TE', 'K', 'DEF'])
+        for (let i = 0; i < (cfg[pos] || 0); i++) {
+          const pl = pool.find(x => x.pos === pos && !used.has(x.id))
+          if (pl) used.add(pl.id); out.push({ slot: pos, p: pl || null })
+        }
+      const FLEXPOS = cfg.flex_te ? ['RB', 'WR', 'TE'] : ['RB', 'WR']
+      for (let i = 0; i < (cfg.FLEX || 0); i++) {
+        const pl = pool.find(x => FLEXPOS.includes(x.pos) && !used.has(x.id))
+        if (pl) used.add(pl.id); out.push({ slot: 'FLEX', p: pl || null })
+      }
+      return out
+    }
+    supabase.from('lineups').select('*').eq('team_id', oppId).eq('week', week)
+      .then(({ data }) => {
+        if (!live) return
+        if (data && data.length) {
+          setOppStarters(sortSlots(data.filter(l => l.slot !== 'BN'))
+            .map(l => ({ slot: l.slot, p: byId.get(l.player_id) || null })))
+        } else setOppStarters(synth())
+      })
+  }, [oppId, week, allPicks])
+
   if (info) return (
     <LeagueInfo league={league} teams={teams} uid={uid}
       startTab={info === 'activity' ? 'activity' : 'league'}
@@ -125,7 +210,7 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
   )
 
   return (
-    <div className="wrap">
+    <div className="wrap hasnav">
       <div className="sect">
         <div>
           <h1>{league.name}</h1>
@@ -136,12 +221,7 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
 
       {err && <div className="err">{err}</div>}
 
-      <div className="toptabs">
-        <button className={tab === 'team' ? 'on' : ''} onClick={() => setTab('team')}>My Team</button>
-        <button className={tab === 'matchup' ? 'on' : ''} onClick={() => setTab('matchup')}>Matchup</button>
-        <button className={tab === 'players' ? 'on' : ''} onClick={() => setTab('players')}>Players</button>
-        <button className={tab === 'league' ? 'on' : ''} onClick={() => setTab('league')}>League</button>
-      </div>
+      <BottomNav tab={tab} setTab={setTab} />
 
       <div className="weekbar">
         <button className="wk" disabled={week <= 1} onClick={() => setWeek(w => w - 1)}>‹</button>
@@ -158,7 +238,7 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
             <>
               <div className="lineuptot">
                 <span className="microlabel">Starting lineup · projected this week</span>
-                <b>{projTotal.toFixed(1)}</b>
+                <b><Sup v={projTotal} /></b>
               </div>
               {sel && <div className="needline">Tap another player to swap.</div>}
 
@@ -216,14 +296,14 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
               <div className="mhead">
                 <div className="mside">
                   <div className="mname">{myTeam?.name}</div>
-                  <div className="mscore">{projTotal.toFixed(1)}</div>
+                  <div className="mscore"><Sup v={projTotal} /></div>
                   <div className="microlabel">projected</div>
                 </div>
                 <div className="mvs">VS</div>
-                <div className="mside">
+                <div className="mside r">
                   <div className="mname">{oppId ? teamById.get(oppId)?.name : 'BYE'}</div>
                   <div className="mscore">
-                    {oppId ? rosterOf(oppId).slice(0, 9).reduce((s, p) => s + (perGame(p, projKey) || 0), 0).toFixed(1) : '—'}
+                    {oppId ? <Sup v={rosterOf(oppId).slice(0, 9).reduce((s, p) => s + (perGame(p, projKey) || 0), 0)} /> : '—'}
                   </div>
                   <div className="microlabel">projected</div>
                 </div>
@@ -232,22 +312,43 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
                 The 2026 season hasn't started, so these are projections, not live scores.
                 Real points appear here once games are played.
               </div>
-              {oppId && (
-                <>
-                  <div className="sect"><h2>{teamById.get(oppId)?.name} roster</h2></div>
-                  {rosterOf(oppId).map(p => (
-                    <div className="row tap nopad" key={p.id} onClick={() => onOpenPlayer(p)}>
-                      <div className="slotpill">{p.pos}</div>
-                      <Shot p={p} size={34} />
-                      <div className="who">
-                        <div className="nm">{p.name}</div>
-                        <div className="sub">{p.team || 'FA'} · Bye {p.bye ?? '—'}</div>
+              {oppId && oppStarters === null &&
+                <div className="loading"><span className="spinner" />Loading matchup…</div>}
+              {oppId && oppStarters && (() => {
+                /* mirrored slot-by-slot pairs, like the real app */
+                const mine = sortSlots(starters).map(l => ({ slot: l.slot, p: byId.get(l.player_id) || null }))
+                const n = Math.max(mine.length, oppStarters.length)
+                const Half = ({ x, opp }) => (
+                  <div className={'mcard' + (opp ? ' opp' : '')}
+                    onClick={() => x?.p && onOpenPlayer(x.p)}>
+                    <div className="mtop">
+                      <Shot p={x?.p} size={36} />
+                      <div className="mpts">
+                        <b>{x?.p ? <Sup v={perGame(x.p, projKey) ?? 0} /> : '—'}</b>
+                        <i>proj</i>
                       </div>
-                      <div className="nums"><div className="num"><b>{perGame(p, projKey) ?? '—'}</b><s>PROJ</s></div></div>
                     </div>
-                  ))}
-                </>
-              )}
+                    <div className="mwho">
+                      {opp && x?.p && <span className="pos">{x.p.pos}</span>}
+                      {x?.p ? x.p.name : 'Empty'}
+                      {!opp && x?.p && <span className="pos">{x.p.pos}</span>}
+                    </div>
+                    <div className="mfoot">
+                      <span>{x?.p ? (x.p.team || 'FA') : '—'}</span>
+                      <span>Bye {x?.p?.bye ?? '—'}</span>
+                    </div>
+                  </div>
+                )
+                return Array.from({ length: n }, (_, i) => (
+                  <React.Fragment key={i}>
+                    <div className="mslotband">{mine[i]?.slot || oppStarters[i]?.slot}</div>
+                    <div className="mpair">
+                      <Half x={mine[i]} opp={false} />
+                      <Half x={oppStarters[i]} opp={true} />
+                    </div>
+                  </React.Fragment>
+                ))
+              })()}
             </>
           )}
         </div>
@@ -261,15 +362,11 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
       {/* ---------------- LEAGUE ---------------- */}
       {tab === 'league' && (
         <div>
-          <button className="inforow tap px" onClick={() => setInfo(true)}>
-            <span className="infolabel" style={{ color: 'var(--ink)', fontWeight: 600 }}>League Info</span>
-            <span className="infoval">
-              <i className="chev">›</i>
-            </span>
+          <button className="linkrow" onClick={() => setInfo(true)}>
+            League Info<i className="chev">›</i>
           </button>
-          <button className="inforow tap px" onClick={() => setInfo('activity')}>
-            <span className="infolabel" style={{ color: 'var(--ink)', fontWeight: 600 }}>Recent Activity</span>
-            <span className="infoval"><i className="chev">›</i></span>
+          <button className="linkrow" onClick={() => setInfo('activity')}>
+            Recent Activity<i className="chev">›</i>
           </button>
 
           <div className="sect"><h2>Standings</h2></div>
@@ -326,17 +423,24 @@ function FreeAgents({ players, allPicks, projKey, onOpenPlayer }) {
             onClick={() => setPosKey(f.k)}>{f.label}</button>
         ))}
       </div>
-      {list.slice(0, shown).map(p => (
-        <div className="row tap nopad" key={p.id} onClick={() => onOpenPlayer(p)}>
-          <div className="slotpill">{p.pos}{p.prank ?? ''}</div>
-          <Shot p={p} size={38} />
-          <div className="who">
-            <div className="nm">{p.name}</div>
-            <div className="sub">{p.team || 'FA'} · Bye {p.bye ?? '—'}</div>
+      <div className="hscroll">
+        {list.slice(0, shown).map(p => (
+          <div className="row tap nopad hrow" key={p.id} onClick={() => onOpenPlayer(p)}>
+            <div className="hfix">
+              <Shot p={p} size={38} />
+              <div className="who">
+                <div className="nm">{p.name}</div>
+                <div className="sub">
+                  <span className={'posbadge bg-' + p.pos}>{p.pos}{p.prank ?? ''}</span>
+                  <span className="dot">·</span>{p.team || 'FA'}
+                  <span className="dot">·</span>({p.bye ?? '—'})
+                </div>
+              </div>
+            </div>
+            <div className="hstats">{faCells(p, projKey)}</div>
           </div>
-          <div className="nums"><div className="num"><b>{perGame(p, projKey) ?? '—'}</b><s>PROJ</s></div></div>
-        </div>
-      ))}
+        ))}
+      </div>
       {list.length > shown && (
         <button className="btn block secondary" onClick={() => setShown(n => n + 100)}>
           Show more — {list.length - shown} left
