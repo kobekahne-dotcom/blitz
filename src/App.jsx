@@ -25,7 +25,7 @@ function Avatar({ p, size = 40, eager = false }) {
     )
   }
   return (
-    <div className={'pic' + (isDef ? ' logo' : '')} style={{ width: size, height: size }}>
+    <div className={'pic' + (isDef ? ' logo' : '') + (p.inj ? ' inj' : '')} style={{ width: size, height: size }}>
       <img src={src} alt="" width={size} height={size} loading={eager ? "eager" : "lazy"} onError={() => setFailed(true)} />
     </div>
   )
