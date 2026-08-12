@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase } from './supabase.js'
+import { useScrollLock } from './lockScroll.js'
 
 const headshot = id => `https://sleepercdn.com/content/nfl/players/${id}.jpg`
 const teamLogo = t => t ? `https://sleepercdn.com/images/team_logos/nfl/${t.toLowerCase()}.png` : null
@@ -12,11 +13,22 @@ const n = v => (v === null || v === undefined || v === '') ? '—' : v
    you see 2019 vs 2020 vs now and form your own opinion. */
 const CAREER_COLS = {
   QB: [['pass_yd', 'PASS YD'], ['pass_td', 'PASS TD'], ['pass_int', 'INT'], ['pass_rtg', 'RTG'],
-       ['cmp_pct', 'CMP%'], ['rush_yd', 'RUSH YD'], ['rush_td', 'RUSH TD']],
+       ['cmp_pct', 'CMP%'], ['rush_yd', 'RUSH YD'], ['rush_td', 'RUSH TD'],
+       ['nv_snap_pct', 'SNAP%'], ['nv_cpoe', 'CPOE'], ['nv_ttt', 'TIME TO THROW'],
+       ['nv_agg', 'AGGR%'], ['nv_pass_ay', 'AIR YD'], ['nv_pressured', 'PRESSURED'],
+       ['nv_blitzed', 'BLITZED'], ['nv_sacked', 'SACKED'], ['nv_bad_throws', 'BAD THROWS'],
+       ['nv_pass_epa', 'PASS EPA']],
   RB: [['rush_yd', 'RUSH YD'], ['rush_att', 'CAR'], ['rush_ypa', 'YPC'], ['rush_td', 'RUSH TD'],
-       ['rec', 'REC'], ['rec_yd', 'REC YD'], ['rec_td', 'REC TD'], ['touch', 'TOUCH']],
+       ['rec', 'REC'], ['rec_yd', 'REC YD'], ['rec_td', 'REC TD'], ['touch', 'TOUCH'],
+       ['nv_snap_pct', 'SNAP%'], ['nv_ybc', 'YDS B/CONTACT'], ['nv_yac_rush', 'YDS A/CONTACT'],
+       ['nv_broken_tkl', 'BRK TKL'], ['nv_ryoe_att', 'RYOE/ATT'], ['nv_box8', '8+ BOX%'],
+       ['nv_tgt_share', 'TGT%'], ['nv_rush_epa', 'RUSH EPA']],
   WR: [['rec', 'REC'], ['rec_tgt', 'TGT'], ['rec_yd', 'REC YD'], ['rec_ypr', 'Y/R'],
-       ['rec_td', 'REC TD'], ['tgt_share', 'TGT%'], ['snap_pct', 'SNAP%']],
+       ['rec_td', 'REC TD'], ['nv_snap_pct', 'SNAP%'], ['nv_tgt_share', 'TGT%'],
+       ['nv_air_yd', 'AIR YD'], ['nv_ay_share', 'AIR YD%'], ['nv_wopr', 'WOPR'],
+       ['nv_racr', 'RACR'], ['nv_separation', 'SEPARATION'], ['nv_cushion', 'CUSHION'],
+       ['nv_yac_over', 'YAC vs EXP'], ['nv_rec_yac', 'YAC'], ['nv_drops', 'DROPS'],
+       ['nv_rec_broken_tkl', 'BRK TKL'], ['nv_rec_epa', 'REC EPA']],
   K: [], DEF: [],
 }
 CAREER_COLS.TE = CAREER_COLS.WR
@@ -39,6 +51,10 @@ function Career({ p, projKey }) {
   if (rows === null) return <div className="hint pad">Loading career…</div>
   if (!rows.length || !cols.length) return null
 
+  /* A season the player missed still gets a row of zeros with the reason,
+     rather than silently vanishing — a gap in the years reads as a bug. */
+  const anyDnp = rows.some(r => (r.stats || {}).dnp)
+
   return (
     <>
       <div className="pc-h">Career — season by season</div>
@@ -54,28 +70,97 @@ function Career({ p, projKey }) {
           <tbody>
             {rows.map(r => {
               const st = r.stats || {}
+              const out = !!st.dnp
               const rank = st.pos_rank_ppr
+              const z = v => out ? 0 : n(v)          // missed season = zeros, not dashes
               return (
-                <tr key={r.season}>
-                  <td className="cseason"><b>{r.season}</b></td>
-                  <td>{r.team || '—'}</td>
-                  <td>{n(st.gp)}</td>
-                  {cols.map(([k]) => <td key={k}>{n(st[k])}</td>)}
-                  <td className="cfp">{n(st[ptsKey])}</td>
-                  <td>{n(st.ppg)}</td>
-                  <td className={rank != null && rank <= 12 ? 'ctop' : ''}>
-                    {rank != null ? p.pos + rank : '—'}
-                  </td>
-                </tr>
+                <React.Fragment key={r.season}>
+                  <tr className={out ? 'cdnp' : ''}>
+                    <td className="cseason"><b>{r.season}</b></td>
+                    <td>{r.team || '—'}</td>
+                    <td>{z(st.gp)}</td>
+                    {cols.map(([k]) => <td key={k}>{z(st[k])}</td>)}
+                    <td className="cfp">{z(st[ptsKey])}</td>
+                    <td>{z(st.ppg)}</td>
+                    <td className={!out && rank != null && rank <= 12 ? 'ctop' : ''}>
+                      {out ? '—' : (rank != null ? p.pos + rank : '—')}
+                    </td>
+                  </tr>
+                  {out && (
+                    <tr className="cdnprow">
+                      <td colSpan={cols.length + 6}>
+                        <span className="cdnptag">DID NOT PLAY</span>
+                        {st.dnp_label || 'Not on an active roster'}
+                        {st.dnp_weeks ? ` · ${st.dnp_weeks} weeks` : ''}
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               )
             })}
           </tbody>
         </table>
       </div>
       <p className="pc-source">
-        Real season totals, 2016 onward, from Sleeper's official stat feed.
-        A season a player missed entirely doesn't get a row.
+        Season totals from Sleeper's official feed; advanced metrics from nflverse
+        (Pro Football Reference + Next Gen Stats).
+        {anyDnp && ' A missed season shows as zeros, with the roster status that explains it.'}
       </p>
+    </>
+  )
+}
+
+/* ---------- the advanced block ----------
+   The numbers the analytics accounts post and no mainstream fantasy app
+   shows. Most recent season the player actually played. Only cells with
+   real data render — an empty cell is never filled with a guess. */
+const ADV = {
+  QB: [['nv_cpoe', 'CPOE', '%'], ['nv_ttt', 'TIME TO THROW', 's'], ['nv_agg', 'AGGRESSIVE', '%'],
+       ['nv_pass_ay', 'AIR YARDS', ''], ['nv_pressured', 'PRESSURED', ''], ['nv_blitzed', 'BLITZED', ''],
+       ['nv_qb_hit', 'QB HITS', ''], ['nv_sacked', 'SACKED', ''], ['nv_bad_throws', 'BAD THROWS', ''],
+       ['nv_pass_epa', 'PASS EPA', ''], ['nv_snap_pct', 'SNAP SHARE', '%']],
+  RB: [['nv_ybc', 'YDS BEFORE CONTACT', ''], ['nv_yac_rush', 'YDS AFTER CONTACT', ''],
+       ['nv_broken_tkl', 'BROKEN TACKLES', ''], ['nv_ryoe_att', 'RUSH YD OVER EXP/ATT', ''],
+       ['nv_eff', 'EFFICIENCY', ''], ['nv_box8', 'VS 8+ IN BOX', '%'],
+       ['nv_tgt_share', 'TARGET SHARE', '%'], ['nv_rush_epa', 'RUSH EPA', ''],
+       ['nv_rush_fd', 'RUSH 1ST DOWNS', ''], ['nv_snap_pct', 'SNAP SHARE', '%']],
+  WR: [['nv_tgt_share', 'TARGET SHARE', '%'], ['nv_air_yd', 'AIR YARDS', ''],
+       ['nv_ay_share', 'AIR YARDS SHARE', '%'], ['nv_wopr', 'WOPR', ''], ['nv_racr', 'RACR', ''],
+       ['nv_separation', 'SEPARATION', 'yd'], ['nv_cushion', 'CUSHION', 'yd'],
+       ['nv_yac_over', 'YAC OVER EXPECTED', ''], ['nv_rec_yac', 'YAC', ''],
+       ['nv_drops', 'DROPS', ''], ['nv_rec_broken_tkl', 'BROKEN TACKLES', ''],
+       ['nv_rec_fd', 'REC 1ST DOWNS', ''], ['nv_rec_epa', 'REC EPA', ''],
+       ['nv_snap_pct', 'SNAP SHARE', '%']],
+  K: [], DEF: [],
+}
+ADV.TE = ADV.WR
+
+function Advanced({ p }) {
+  const [row, setRow] = useState(undefined)
+  useEffect(() => {
+    let live = true
+    supabase.from('player_seasons').select('season,stats')
+      .eq('player_id', p.id).order('season', { ascending: false }).limit(6)
+      .then(({ data }) => {
+        if (!live) return
+        const played = (data || []).find(r => !(r.stats || {}).dnp)
+        setRow(played || null)
+      })
+    return () => { live = false }
+  }, [p.id])
+
+  if (row === undefined) return null
+  const cells = (ADV[p.pos] || []).filter(([k]) => row && row.stats[k] != null)
+  if (!cells.length) return null
+
+  return (
+    <>
+      <div className="pc-h">Advanced — {row.season}</div>
+      <div className="advgrid">
+        {cells.map(([k, lab, unit]) => (
+          <div key={k}><s>{lab}</s><b>{row.stats[k]}{unit}</b></div>
+        ))}
+      </div>
     </>
   )
 }
@@ -111,6 +196,7 @@ const USAGE = [
 ]
 
 export default function PlayerCard({ p, projKey, myTurn, busy, onDraft, onQueue, queued, onClose }) {
+  useScrollLock()   // the page behind must not move while this is open
   const [tab, setTab] = useState('overview')
   const [imgFail, setImgFail] = useState(false)
   const [dragY, setDragY] = useState(0)
@@ -133,6 +219,8 @@ export default function PlayerCard({ p, projKey, myTurn, busy, onDraft, onQueue,
   const rows = SEASON_ROWS[p.pos] || []
   const hasSeason = rows.some(([k]) => proj[k] != null || ly[k] != null)
   const usage = USAGE.filter(([k]) => ly[k] != null)
+  // a real 2025 line means games played, not just a stray rank left on the row
+  const playedLastYear = (ly.gp || 0) > 0
 
   return (
     <div className="sheetback" onClick={() => !busy && onClose()}>
@@ -237,8 +325,11 @@ export default function PlayerCard({ p, projKey, myTurn, busy, onDraft, onQueue,
           {tab === 'stats' && (
             <>
               <Career p={p} projKey={projKey} />
-              <div className="pc-h">2025 full line</div>
-              {Object.keys(ly).length ? (
+              {/* A player who missed the season still carries a junk
+                  position rank on the roster row (Tank Dell read "WR1249").
+                  One stray number is worse than no block at all. */}
+              {playedLastYear && <div className="pc-h">2025 full line</div>}
+              {playedLastYear ? (
                 <div className="kvgrid wide">
                   {[['gp', 'Games played'], ['gs', 'Games started'], ['pts_ppr', 'Fantasy points (PPR)'],
                     ['ppg', 'Points per game'], ['pos_rank_ppr', 'Position finish'],
@@ -253,7 +344,7 @@ export default function PlayerCard({ p, projKey, myTurn, busy, onDraft, onQueue,
                       <div key={k}><span>{lab}</span><b>{k === 'pos_rank_ppr' ? `${p.pos}${ly[k]}` : ly[k]}</b></div>
                     ))}
                 </div>
-              ) : <div className="hint pad">No 2025 stats — rookie, or did not play.</div>}
+              ) : <div className="hint pad">No 2025 stat line — see the career table above for why.</div>}
             </>
           )}
 
@@ -283,9 +374,12 @@ export default function PlayerCard({ p, projKey, myTurn, busy, onDraft, onQueue,
                   </div>
                 </>
               ) : <div className="hint pad">No usage data for 2025.</div>}
+              <Advanced p={p} />
               <p className="pc-source">
-                Usage from Sleeper's official 2025 stat feed. Routes run and air yards aren't in any
-                free source, so they're not shown rather than guessed.
+                Usage from Sleeper's 2025 feed; advanced metrics from nflverse — Pro Football
+                Reference charting (broken tackles, yards before contact, drops, pressures) and
+                NFL Next Gen Stats (separation, cushion, time to throw). Routes run is PFF's
+                paid number and is not shown rather than approximated.
               </p>
             </>
           )}

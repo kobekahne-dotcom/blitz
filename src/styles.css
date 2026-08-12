@@ -565,13 +565,13 @@ html[data-theme="dark"] .sheetback { background: rgba(0,0,0,.7); }
 
 /* headline strip: label above value, rank in a hexagon (NFL pattern) */
 .pc-topstats {
-  display: flex; align-items: center;
-  background: var(--chipbg); border-radius: 12px; padding: 10px 4px; margin-bottom: 4px;
+  display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; align-items: center;
+  background: var(--chipbg); border-radius: 12px; padding: 10px 2px; margin-bottom: 4px;
 }
-.pc-topstats > div { flex: 1; padding: 2px; text-align: center; }
+.pc-topstats > div { padding: 2px; text-align: center; min-width: 0; }
 .pc-topstats b { display: block; font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--ink2); }
 .pc-topstats span { font-size: 8.5px; font-weight: 700; letter-spacing: .07em; color: var(--dim); text-transform: uppercase; }
-.pc-hex { flex: 0 0 auto !important; width: 64px; align-self: stretch; display: grid; place-items: center;
+.pc-hex { align-self: stretch; display: grid; place-items: center;
   filter: drop-shadow(0 2px 4px rgba(31,30,26,.18)); }
 .pc-hex .hex {
   width: 54px; height: 60px; background: var(--surface);
@@ -605,10 +605,18 @@ html[data-theme="dark"] .sheetback { background: rgba(0,0,0,.7); }
 .sg-lab { font-weight: 700; font-size: 10px; color: var(--dim); letter-spacing: .04em; }
 .sg-fpts { font-weight: 800; }
 
-.kvgrid { display: grid; grid-template-columns: 1fr 1fr; }
-.kvgrid > div { padding: 10px 12px; display: flex; justify-content: space-between; align-items: baseline;
-  gap: 8px; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); }
-.kvgrid > div:nth-child(2n) { border-right: 0; }
+.kvgrid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 0; }
+.kvgrid > div {
+  padding: 11px 12px; display: flex; justify-content: space-between; align-items: baseline;
+  gap: 8px; min-height: 42px; border-bottom: 1px solid var(--line);
+}
+/* only the left column carries the divider, and it stops at the last row */
+.kvgrid > div:nth-child(odd) { border-right: 1px solid var(--line); padding-left: 0; }
+.kvgrid > div:nth-child(even) { padding-right: 0; }
+.kvgrid > div:last-child:nth-child(odd) { border-right: 1px solid var(--line); }
+.kvgrid > div:nth-last-child(-n+2):nth-child(odd) ~ div { border-bottom: 0; }
+.kvgrid > div:last-child, .kvgrid > div:nth-last-child(2):nth-child(odd) { border-bottom: 0; }
+.kvgrid span { flex: 1; min-width: 0; }
 .kvgrid span { color: var(--dim); font-size: 11.5px; }
 .kvgrid b { font-size: 13.5px; font-variant-numeric: tabular-nums; font-weight: 700; color: var(--ink); }
 .kvgrid b.warn { color: var(--bad); }
@@ -789,3 +797,38 @@ html[data-theme="dark"] .sheetback { background: rgba(0,0,0,.7); }
 .career td.cfp { font-weight: 800; }
 .career td.ctop { color: var(--good); font-weight: 700; }
 .career tbody tr:last-child td { border-bottom: 0; }
+
+
+/* a season the player missed: zeros, dimmed, with the sourced reason */
+.career tr.cdnp td { color: var(--dim); }
+.career tr.cdnp td.cfp { font-weight: 700; }
+.career tr.cdnp td.cseason b { color: var(--dim); }
+.career tr.cdnprow td {
+  padding: 0 0 9px; text-align: left; font-size: 11.5px; color: var(--dim);
+  border-bottom: 1px solid var(--line);
+}
+.cdnptag {
+  display: inline-block; margin-right: 7px; background: var(--chipbg); color: var(--dim);
+  font-size: 8.5px; font-weight: 800; letter-spacing: .08em; padding: 2px 6px; border-radius: 4px;
+}
+.career td, .career th { height: 34px; }
+.career tr.cdnprow td { height: auto; }
+
+/* advanced block — same label-above-value rhythm as everything else */
+.advgrid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+  gap: 1px; background: var(--line); border-radius: 10px; overflow: hidden; margin-bottom: 4px;
+}
+/* every cell the same height, labels top-aligned, numbers on one baseline —
+   a two-line label must not shove its value out of line with its neighbours */
+.advgrid > div {
+  background: var(--surface); padding: 9px 6px 10px; text-align: center;
+  display: flex; flex-direction: column; justify-content: space-between;
+  min-height: 62px;
+}
+.advgrid s {
+  display: block; font-size: 8px; font-weight: 700; letter-spacing: .06em; line-height: 1.25;
+  color: var(--dim); text-decoration: none; text-transform: uppercase;
+  min-height: 20px; display: flex; align-items: flex-start; justify-content: center;
+}
+.advgrid b { font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--ink); }

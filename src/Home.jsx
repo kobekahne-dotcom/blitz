@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase.js'
 import { countdown, fmtDraftShort } from './when.js'
+import { useScrollLock } from './lockScroll.js'
 
 const go = (h) => { window.location.hash = h }
 
@@ -136,6 +137,7 @@ export default function Home({ uid, prefillCode }) {
 }
 
 function Sheet({ kind, close, prefillCode }) {
+  useScrollLock()
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState(null)
   const [name, setName] = useState('')

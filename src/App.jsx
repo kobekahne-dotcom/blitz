@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { supabase, ensureSession, fetchAllPlayers } from './supabase.js'
+import { supabase, ensureSession, fetchAllPlayers, rememberTeam, restoreTeams } from './supabase.js'
 import { slotForPick, roundOfPick, pickInRound } from './snake.js'
 import Home from './Home.jsx'
 import PlayerCard from './PlayerCard.jsx'
@@ -121,7 +121,14 @@ export default function App() {
 
   const connect = useCallback(() => {
     setAuthErr(null)
-    ensureSession().then(setSession).catch(e => setAuthErr(e.message))
+    ensureSession()
+      .then(async (sess) => {
+        // storage may have been cleared out from under us, handing back a
+        // brand new anonymous user with no teams — put them back silently
+        try { await restoreTeams(sess.user.id) } catch {}
+        setSession(sess)
+      })
+      .catch(e => setAuthErr(e.message))
   }, [])
   useEffect(() => { connect() }, [connect])
 
@@ -188,12 +195,14 @@ function League({ leagueId, uid }) {
         picks = pk.data
       }
       setConnIssue(false)
+      const mine = (tm.data || []).find(t => t.owner_uid === uid)
+      if (mine?.claim_code) rememberTeam(lg.data.join_code, mine.claim_code)
       setState({ phase: 'ready', league: lg.data, teams: tm.data, draft: dr.data, picks })
     } catch (e) {
       if (stateRef.current.phase === 'ready') setConnIssue(true)
       else setState({ phase: 'error', message: e.message })
     }
-  }, [leagueId])
+  }, [leagueId, uid])
 
   useEffect(() => {
     refetch()

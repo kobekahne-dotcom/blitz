@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './supabase'
+import { useScrollLock } from './lockScroll.js'
 
 /* League Info — ESPN's blueprint.
    The whole screen is drawn from blitz_setting_spec() in the database,
@@ -218,6 +219,7 @@ export default function LeagueInfo({ league, teams, uid, onClose, startTab }) {
 
 /* ---------- one setting at a time, in a bottom sheet ---------- */
 function EditSheet({ row, current, close, save }) {
+  useScrollLock()
   const [v, setV] = useState(current)
   const [busy, setBusy] = useState(false)
 
