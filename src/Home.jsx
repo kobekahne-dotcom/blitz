@@ -148,6 +148,7 @@ function Sheet({ kind, close, prefillCode }) {
   const [code, setCode] = useState(prefillCode || '')
   const [claim, setClaim] = useState('')
   const [flexTE, setFlexTE] = useState(false)
+  const [draftAt, setDraftAt] = useState('')
 
   const run = async (fn, args, onOk) => {
     setBusy(true); setErr(null)
@@ -218,10 +219,20 @@ function Sheet({ kind, close, prefillCode }) {
                 <small>Off = flex is RB/WR only</small>
               </span>
             </label>
+            <F label="Draft date and time">
+              <input type="datetime-local" value={draftAt} onChange={e => setDraftAt(e.target.value)} />
+            </F>
+            <p className="sheet-note" style={{ marginTop: -6 }}>
+              Optional — you can set or change it later. Everyone sees it in their own time zone.
+            </p>
+            {/* p_draft_at is always sent, even when empty: two versions of
+                create_league once existed and leaving it off made the call
+                ambiguous, which broke league creation outright. */}
             <button className="btn block big" disabled={busy || !name.trim() || !teamName.trim()}
               onClick={() => run('create_league', {
                 p_name: name, p_num_teams: numTeams, p_rounds: 15, p_scoring: scoring,
                 p_pick_seconds: secs, p_team_name: teamName,
+                p_draft_at: draftAt ? new Date(draftAt).toISOString() : null,
               }, async d => {
                 if (flexTE) await supabase.rpc('set_flex_te', { p_league_id: d.league_id, p_on: true })
                 go('#/league/' + d.league_id)

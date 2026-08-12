@@ -47,9 +47,11 @@ ok('choice rows all carry their options', spec.every(s => s.type !== 'choice' ||
 console.log(`  (${spec.length} settings across ${new Set(spec.map(s => s.sect)).size} sections)`)
 
 console.log('\n=== a real league ===')
+/* exactly the call the app makes, so an ambiguous overload shows up here
+   before it shows up for a friend trying to make a league */
 const mk = await rpc(BOSS, 'create_league', {
   p_name: 'Settings Test', p_num_teams: 12, p_rounds: 15,
-  p_scoring: 'ppr', p_pick_seconds: 90, p_team_name: 'Boss' })
+  p_scoring: 'ppr', p_pick_seconds: 90, p_team_name: 'Boss', p_draft_at: null })
 ok('league created', mk.ok, em(mk))
 if (!mk.ok) process.exit(1)
 const L = mk.body.league_id
@@ -78,8 +80,13 @@ r = await set(BOSS, 'transactions.waiver_order', 'move_to_last')
 ok('a choice saves', r.ok, em(r))
 r = await set(BOSS, 'basic.name', 'Settings Test 2')
 ok('text saves', r.ok, em(r))
+/* JSON null arrives as a SQL NULL, which compares to nothing — this is
+   where a blank activity line and a skipped validation came from */
 r = await set(BOSS, 'trades.limit', null)
 ok('a nullable setting takes No Limit', r.ok, em(r))
+ok('...and says "No Limit" rather than logging a blank line', r.body?.shown === 'No Limit', JSON.stringify(r.body))
+r = await set(BOSS, 'trades.veto_votes', null)
+ok('...while a required setting still refuses an empty value', !r.ok, em(r))
 const when = new Date(Date.now() + 3 * 86400000).toISOString()
 r = await set(BOSS, 'draft.at', when)
 ok('a draft date saves', r.ok, em(r))
