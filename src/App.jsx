@@ -4,6 +4,7 @@ import { slotForPick, roundOfPick, pickInRound } from './snake.js'
 import Home from './Home.jsx'
 import PlayerCard from './PlayerCard.jsx'
 import Season from './Season.jsx'
+import { fmtDraft, countdown } from './when.js'
 
 const go = (h) => { window.location.hash = h }
 
@@ -269,6 +270,8 @@ function Lobby({ league, teams, uid, connIssue }) {
 
       {err && <div className="err">{err}</div>}
 
+      <DraftWhen league={league} isCommish={isCommish} onSaved={() => window.location.reload()} />
+
       <div className="card">
         <div className="microlabel mb8">Invite your league</div>
         <div className="sharebox">
@@ -336,6 +339,80 @@ function Lobby({ league, teams, uid, connIssue }) {
         </>
       ) : (
         <div className="notice">Waiting for the commissioner to start. This updates on its own.</div>
+      )}
+    </div>
+  )
+}
+
+/* ---------- when the draft is ----------
+   The single most-asked question in the days before a draft, so it sits
+   at the top of the lobby with a live countdown. The commissioner sets
+   it here; everyone else just reads it in their own time zone. */
+function DraftWhen({ league, isCommish, onSaved }) {
+  const [tick, setTick] = useState(0)
+  const [open, setOpen] = useState(false)
+  const [val, setVal] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState(null)
+
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  const when = fmtDraft(league.draft_at)
+  const cd = countdown(league.draft_at)
+
+  const save = async () => {
+    setBusy(true); setErr(null)
+    const iso = val ? new Date(val).toISOString() : null
+    const { error } = await supabase.rpc('set_draft_time', {
+      p_league_id: league.id, p_when: iso,
+    })
+    setBusy(false)
+    if (error) { setErr(error.message); return }
+    setOpen(false); onSaved && onSaved()
+  }
+
+  return (
+    <div className="card draftwhen">
+      <div className="microlabel mb8">Draft</div>
+      {when ? (
+        <>
+          <div className="whenbig">{when}</div>
+          <div className={'whencd' + (cd?.past ? ' now' : '')}>
+            {cd?.past ? 'Draft time has arrived — the commissioner starts it below.'
+                      : `Starts in ${cd.text}`}
+          </div>
+        </>
+      ) : (
+        <div className="whenbig none">Not scheduled yet</div>
+      )}
+
+      {isCommish && !open && (
+        <button className="btn small secondary mt10" onClick={() => {
+          const base = league.draft_at ? new Date(league.draft_at) : new Date(Date.now() + 86400000)
+          setVal(new Date(base.getTime() - base.getTimezoneOffset() * 60000).toISOString().slice(0, 16))
+          setOpen(true)
+        }}>{when ? 'Change draft time' : 'Set draft time'}</button>
+      )}
+
+      {isCommish && open && (
+        <div className="mt10">
+          <div className="field">
+            <input type="datetime-local" value={val} onChange={e => setVal(e.target.value)} />
+          </div>
+          {err && <div className="err">{err}</div>}
+          <div className="btnrow">
+            <button className="btn small" disabled={busy || !val} onClick={save}>
+              {busy ? 'Saving…' : 'Save'}
+            </button>
+            <button className="btn small secondary" disabled={busy} onClick={() => setOpen(false)}>Cancel</button>
+          </div>
+        </div>
+      )}
+      {!isCommish && !when && (
+        <p className="hint mt10">The commissioner hasn't picked a time yet.</p>
       )}
     </div>
   )

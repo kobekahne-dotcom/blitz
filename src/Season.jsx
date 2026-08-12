@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from './supabase.js'
+import LeagueInfo from './LeagueInfo.jsx'
 
 const headshot = id => `https://sleepercdn.com/content/nfl/players/${id}.jpg`
 const teamLogo = t => t ? `https://sleepercdn.com/images/team_logos/nfl/${t.toLowerCase()}.png` : null
@@ -54,6 +55,7 @@ function Shot({ p, size = 40 }) {
    ============================================================ */
 export default function Season({ league, teams, draft, uid, players, onOpenPlayer, goDraft }) {
   const [tab, setTab] = useState('team')
+  const [info, setInfo] = useState(false)   // League Info takes over the screen
   const [week, setWeek] = useState(1)
   const [lineup, setLineup] = useState(null)
   const [allPicks, setAllPicks] = useState(null)
@@ -115,6 +117,12 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
     .filter(p => p.team_id === teamId)
     .map(p => byId.get(p.player_id)).filter(Boolean)
     .sort((a, b) => (b[projKey] || 0) - (a[projKey] || 0))
+
+  if (info) return (
+    <LeagueInfo league={league} teams={teams} uid={uid}
+      startTab={info === 'activity' ? 'activity' : 'league'}
+      onClose={() => setInfo(false)} />
+  )
 
   return (
     <div className="wrap">
@@ -253,6 +261,17 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
       {/* ---------------- LEAGUE ---------------- */}
       {tab === 'league' && (
         <div>
+          <button className="inforow tap px" onClick={() => setInfo(true)}>
+            <span className="infolabel" style={{ color: 'var(--ink)', fontWeight: 600 }}>League Info</span>
+            <span className="infoval">
+              <i className="chev">›</i>
+            </span>
+          </button>
+          <button className="inforow tap px" onClick={() => setInfo('activity')}>
+            <span className="infolabel" style={{ color: 'var(--ink)', fontWeight: 600 }}>Recent Activity</span>
+            <span className="infoval"><i className="chev">›</i></span>
+          </button>
+
           <div className="sect"><h2>Standings</h2></div>
           {teams.map((t, i) => {
             const roster = rosterOf(t.id)

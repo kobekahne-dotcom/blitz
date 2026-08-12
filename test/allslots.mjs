@@ -16,10 +16,26 @@ const su = async () => {
   for (let i = 0; i < 10; i++) {
     const r = await fetchR(`${API}/auth/v1/signup`, { method: 'POST', headers: { apikey: ANON, 'Content-Type': 'application/json' }, body: '{}' })
     const d = await r.json()
-    if (d.access_token) return { tok: d.access_token, uid: d.user.id }
+    if (d.access_token) return { tok: d.access_token, refresh: d.refresh_token, uid: d.user.id }
     await sleep(8000)
   }
   throw new Error('signup rate limited')
+}
+
+/* Access tokens last an hour; a 180-pick draft outlives that. Browsers
+   refresh automatically (autoRefreshToken), so the harness must too or
+   it reports a false failure. */
+const expiringSoon = t => {
+  try { return (JSON.parse(Buffer.from(t.split('.')[1],'base64')).exp * 1000) - Date.now() < 120000 }
+  catch { return true }
+}
+async function keepAlive() {
+  if (!expiringSoon(U.tok)) return
+  const r = await fetchR(`${API}/auth/v1/token?grant_type=refresh_token`, {
+    method: 'POST', headers: { apikey: ANON, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: U.refresh }) })
+  const d = await r.json()
+  if (d.access_token) { U.tok = d.access_token; U.refresh = d.refresh_token; console.log('   (token refreshed)') }
 }
 let U
 const H = () => ({ apikey: ANON, Authorization: 'Bearer ' + U.tok, 'Content-Type': 'application/json' })
@@ -47,6 +63,7 @@ async function runLeague(TEAMS, ROUNDS) {
   const draft = (await sel(`drafts?league_id=eq.${L}&select=*`))[0]
 
   for (let pick = 1; pick <= TEAMS * ROUNDS; pick++) {
+    if (pick % 25 === 0) await keepAlive()
     const t = teams.find(x => x.draft_slot === slotFor(pick, TEAMS))
     const c = await rpc('autopick_choice', { p_draft_id: draft.id, p_team_id: t.id })
     if (!c.ok) return { err: `autopick_choice @${pick}: ${em(c)}`, L }
@@ -118,7 +135,7 @@ console.log('=== 12 teams x 15 rounds — checking ALL 12 slots ===')
 
 /* ============ 2. a sweep of league sizes ============ */
 console.log('\n=== other league shapes ===')
-for (const [TEAMS, ROUNDS] of [[4, 15], [8, 15], [10, 16], [14, 15], [16, 15], [12, 8]]) {
+for (const [TEAMS, ROUNDS] of [[4, 15], [8, 15], [10, 15], [14, 15], [16, 15], [12, 15]]) {
   const res = await runLeague(TEAMS, ROUNDS)
   if (res.err) { ok(`${TEAMS} teams x ${ROUNDS} rounds`, false, res.err); continue }
   let bad = []

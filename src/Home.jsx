@@ -1,10 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase.js'
+import { countdown, fmtDraftShort } from './when.js'
 
 const go = (h) => { window.location.hash = h }
 
 export default function Home({ uid, prefillCode }) {
   const [leagues, setLeagues] = useState(null)
+  const [, setTick] = useState(0)   // keeps the draft countdowns live
+  useEffect(() => {
+    const id = setInterval(() => setTick(t => t + 1), 30000)
+    return () => clearInterval(id)
+  }, [])
   const [sheet, setSheet] = useState(prefillCode ? 'join' : null)
   const [err, setErr] = useState(null)
   const [confirmDel, setConfirmDel] = useState(null)
@@ -74,7 +80,11 @@ export default function Home({ uid, prefillCode }) {
 
       {leagues && leagues.map(l => {
         const st = l.draft?.status || 'pending'
-        const label = st === 'pending' ? 'Waiting to start'
+        const cd = st === 'pending' ? countdown(l.draft_at) : null
+        const label = st === 'pending'
+            ? (l.draft_at
+                ? (cd?.past ? 'Ready to start' : `Draft ${fmtDraftShort(l.draft_at)} · in ${cd.text}`)
+                : 'Draft time not set')
           : st === 'active' ? `Drafting · pick ${l.draft.current_pick}`
           : st === 'paused' ? 'Paused' : 'Draft complete'
         return (

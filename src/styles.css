@@ -495,3 +495,67 @@ h1, h2, h3 { font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; }
   background: var(--surface2); border: 1px solid var(--line); color: var(--dim);
   border-radius: 8px; font-size: 15px;
 }
+
+/* ---------- League Info ----------
+   Grouped cards, label left, value right. Negative scoring values read
+   red the way they do on a real fantasy settings page. Rows the manager
+   can change get a chevron; everyone else's rows are plain text. */
+.infocard {
+  background: var(--surface); border-radius: 10px;
+  margin: 12px 0; padding: 0 13px; overflow: hidden;
+}
+.infohead {
+  font-size: 12.5px; font-weight: 800; letter-spacing: .08em;
+  padding: 15px 0 11px; border-bottom: 1px dotted var(--line2);
+}
+.infonote { color: var(--dim2); font-size: 11.5px; padding: 9px 0 0; }
+.infogrp {
+  font-size: 16.5px; font-weight: 700; color: var(--ink);
+  padding: 18px 0 4px;
+}
+.inforow {
+  display: flex; align-items: center; gap: 14px; width: 100%;
+  padding: 13px 0; min-height: 50px; text-align: left;
+  background: none; border: 0; border-bottom: 1px solid var(--line);
+  color: inherit; font-family: inherit; font-size: 14.5px;
+}
+.inforow:last-child { border-bottom: 0; }
+.inforow.tap:active { background: var(--surface2); }
+.inforow:disabled { cursor: default; }
+.inforow.idp { opacity: .5; }
+.infolabel { flex: 1; min-width: 0; color: var(--dim); }
+.infoval {
+  flex: 0 1 auto; text-align: right; color: var(--ink); font-weight: 600;
+  font-variant-numeric: tabular-nums; display: flex; align-items: center;
+  justify-content: flex-end; gap: 6px;
+}
+.infoval.neg { color: var(--red); }
+.infoval .chev { font-style: normal; color: var(--dim2); font-size: 17px; line-height: 1; }
+.lockline {
+  color: var(--dim2); font-size: 12.5px; padding: 12px 0 0; line-height: 1.5;
+}
+
+/* choice picker inside the edit sheet */
+.pickers { display: flex; flex-direction: column; gap: 8px; }
+.pick {
+  text-align: left; padding: 13px 14px; min-height: 48px;
+  background: var(--surface2); border: 1px solid var(--line2);
+  color: var(--ink); border-radius: 8px; font-size: 15px; font-weight: 500;
+}
+.pick.on { border-color: var(--green); color: var(--green); font-weight: 700; }
+.pick:active { background: #1E1E1E; }
+
+/* ---------- draft time ----------
+   The one thing everyone opens the app to check in the week before a
+   draft, so it reads big and the countdown moves. */
+.draftwhen .whenbig {
+  font-size: 19px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.25;
+}
+.draftwhen .whenbig.none { color: var(--dim2); font-weight: 600; }
+.draftwhen .whencd {
+  color: var(--green); font-size: 13px; font-weight: 700;
+  font-variant-numeric: tabular-nums; margin-top: 4px;
+}
+.draftwhen .whencd.now { color: var(--amber); }
+.btnrow { display: flex; gap: 8px; }
+.btnrow .btn { flex: 1; }
