@@ -195,11 +195,13 @@ const USAGE = [
   ['ppg', 'Fantasy pts/game', ''],
 ]
 
-export default function PlayerCard({ p, projKey, myTurn, busy, onDraft, onQueue, queued, onClose }) {
+export default function PlayerCard({ p, projKey, myTurn, busy, onDraft, onQueue, queued, onClose,
+                                     onDrop, mine, waiverDays }) {
   useScrollLock()   // the page behind must not move while this is open
   const [tab, setTab] = useState('overview')
   const [imgFail, setImgFail] = useState(false)
   const [dragY, setDragY] = useState(0)
+  const [confirmDrop, setConfirmDrop] = useState(false)
   const startY = React.useRef(null)
 
   // swipe the sheet down to dismiss
@@ -402,14 +404,35 @@ export default function PlayerCard({ p, projKey, myTurn, busy, onDraft, onQueue,
           )}
         </div>
 
-        <div className="pc-actions">
-          <button className="btn secondary" onClick={onQueue}>{queued ? '★ Queued' : '☆ Queue'}</button>
-          {/* green, not red — in this design language red means bad news,
-              and drafting a guy is the happiest tap in the app */}
-          <button className="btn big good flex" disabled={!myTurn || busy} onClick={onDraft}>
-            {busy ? 'Drafting…' : myTurn ? 'Draft him' : 'Not your turn'}
-          </button>
-        </div>
+        {/* nothing to offer for someone else's player in the season —
+            render no bar at all rather than an empty strip of space */}
+        {(mine || onDrop === undefined) && <div className="pc-actions">
+          {/* In the season the draft is over — the only thing you can do with
+              your own player is drop him, and dropping is the one genuinely
+              destructive tap in the app, so it confirms first. */}
+          {mine ? (
+            confirmDrop ? (
+              <>
+                <button className="btn secondary" disabled={busy}
+                  onClick={() => setConfirmDrop(false)}>Keep him</button>
+                <button className="btn big danger flex" disabled={busy} onClick={onDrop}>
+                  {busy ? 'Dropping…' : `Yes, drop${waiverDays ? ` — ${waiverDays}d waivers` : ''}`}
+                </button>
+              </>
+            ) : (
+              <button className="btn big danger flex" onClick={() => setConfirmDrop(true)}>
+                Drop {p.name.split(' ').slice(-1)[0]}
+              </button>
+            )
+          ) : onDrop === undefined ? (
+            <>
+              <button className="btn secondary" onClick={onQueue}>{queued ? '★ Queued' : '☆ Queue'}</button>
+              <button className="btn big good flex" disabled={!myTurn || busy} onClick={onDraft}>
+                {busy ? 'Drafting…' : myTurn ? 'Draft him' : 'Not your turn'}
+              </button>
+            </>
+          ) : null}
+        </div>}
       </div>
     </div>
   )

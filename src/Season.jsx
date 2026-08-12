@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from './supabase.js'
 import LeagueInfo from './LeagueInfo.jsx'
+import { useScrollLock } from './lockScroll.js'
 
 const headshot = id => `https://sleepercdn.com/content/nfl/players/${id}.jpg`
 const teamLogo = t => t ? `https://sleepercdn.com/images/team_logos/nfl/${t.toLowerCase()}.png` : null
@@ -120,6 +121,7 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
   const [priority, setPriority] = useState([])
   const [txErr, setTxErr] = useState(null)
   const [txBusy, setTxBusy] = useState(false)
+  const [pending, setPending] = useState(null)   // {player, mode} awaiting a drop choice
 
   const myTeam = teams.find(t => t.owner_uid === uid)
   const byId = useMemo(() => new Map((players || []).map(p => [p.id, p])), [players])
@@ -456,12 +458,29 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
           <FreeAgents players={players} projKey={projKey} onOpenPlayer={onOpenPlayer}
             stateOf={stateOf} waiverBy={waiverBy} claimedBy={claimedBy}
             busy={txBusy} rosterFull={rosterFull}
-            onAdd={p => transact('add_free_agent', { p_team_id: myTeam.id, p_player_id: p.id, p_drop_id: null })}
-            onClaim={p => transact('claim_waiver', { p_team_id: myTeam.id, p_player_id: p.id, p_drop_id: null })} />
+            onAdd={p => rosterFull
+              ? setPending({ player: p, mode: 'add' })
+              : transact('add_free_agent', { p_team_id: myTeam.id, p_player_id: p.id, p_drop_id: null })}
+            onClaim={p => setPending({ player: p, mode: 'claim' })} />
         </>
       )}
 
       {/* ---------------- LEAGUE ---------------- */}
+      {pending && myTeam && (
+        <DropSheet
+          adding={pending.player} mode={pending.mode} projKey={projKey} busy={txBusy}
+          mine={rosterOf(myTeam.id)}
+          startersById={new Set((lineup || []).filter(l => l.slot !== 'BN').map(l => l.player_id))}
+          onCancel={() => setPending(null)}
+          onConfirm={async (dropId) => {
+            const fn = pending.mode === 'claim' ? 'claim_waiver' : 'add_free_agent'
+            const okd = await transact(fn, {
+              p_team_id: myTeam.id, p_player_id: pending.player.id, p_drop_id: dropId || null,
+            })
+            if (okd) setPending(null)
+          }} />
+      )}
+
       {tab === 'league' && (
         <div>
           <button className="linkrow" onClick={() => setInfo(true)}>
@@ -491,6 +510,64 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/* ---------- who are you dropping? ----------
+   A full roster is the normal state, so "add" almost always means
+   "swap". The sheet leads with the players you are least likely to
+   miss — worst projection first — and says plainly when the one you
+   picked is currently starting. */
+function DropSheet({ adding, mode, mine, projKey, busy, onCancel, onConfirm, startersById }) {
+  useScrollLock()
+  const [pick, setPick] = useState(null)
+  const list = [...mine].sort((a, b) => (perGame(a, projKey) || 0) - (perGame(b, projKey) || 0))
+
+  return (
+    <div className="sheetback" onClick={() => !busy && onCancel()}>
+      <div className="sheet tall" onClick={e => e.stopPropagation()}>
+        <div className="sheet-top">
+          <div className="sheet-grab" />
+          <button className="sheet-close" onClick={onCancel} aria-label="Close">✕</button>
+        </div>
+        <h3>{mode === 'claim' ? 'Claim' : 'Add'} {adding.name}</h3>
+        <p className="sheet-note">
+          {mode === 'claim'
+            ? 'He is on waivers. Pick who you would drop if your claim wins — you can also claim without dropping anyone.'
+            : 'Your roster is full. Pick who to drop.'}
+        </p>
+
+        {list.map(pl => {
+          const starting = startersById.has(pl.id)
+          return (
+            <button key={pl.id}
+              className={'droprow' + (pick === pl.id ? ' on' : '')}
+              onClick={() => setPick(pick === pl.id ? null : pl.id)}>
+              <Shot p={pl} size={34} />
+              <span className="who">
+                <span className="nm">{pl.name}</span>
+                <span className="sub">
+                  <span className={'posbadge bg-' + pl.pos}>{pl.pos}</span>
+                  <span className="dot">·</span>{pl.team || 'FA'}
+                  {starting && <><span className="dot">·</span><b className="startflag">STARTING</b></>}
+                </span>
+              </span>
+              <span className="num plain"><b>{perGame(pl, projKey) ?? '—'}</b><s>PROJ</s></span>
+            </button>
+          )
+        })}
+
+        <div className="sheet-foot">
+        <button className="btn block big" disabled={busy || (mode === 'add' && !pick)}
+          onClick={() => onConfirm(pick)}>
+          {busy ? 'Working…'
+            : pick ? `${mode === 'claim' ? 'Claim' : 'Add'} ${adding.name.split(' ').slice(-1)[0]}, drop ${(mine.find(m => m.id === pick) || {}).name}`
+            : mode === 'claim' ? 'Claim without dropping anyone' : 'Pick someone to drop'}
+        </button>
+        <button className="btn block secondary" disabled={busy} onClick={onCancel}>Cancel</button>
+        </div>
+      </div>
     </div>
   )
 }

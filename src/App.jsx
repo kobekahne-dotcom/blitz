@@ -257,6 +257,17 @@ function League({ leagueId, uid }) {
 function SeasonWrap({ league, teams, draft, uid, goDraft }) {
   const [players, setPlayers] = useState(null)
   const [card, setCard] = useState(null)
+  const [mineIds, setMineIds] = useState(new Set())
+  const [dropBusy, setDropBusy] = useState(false)
+  const myTeam = teams.find(t => t.owner_uid === uid)
+
+  const loadMine = useCallback(async () => {
+    if (!myTeam) return
+    const { data } = await supabase.from('roster_players')
+      .select('player_id').eq('team_id', myTeam.id)
+    setMineIds(new Set((data || []).map(r => r.player_id)))
+  }, [myTeam?.id])
+  useEffect(() => { loadMine() }, [loadMine])
   const projKey = league.scoring === 'ppr' ? 'ppr' : league.scoring === 'half' ? 'half' : 'std'
 
   useEffect(() => {
@@ -269,8 +280,18 @@ function SeasonWrap({ league, teams, draft, uid, goDraft }) {
       <Season league={league} teams={teams} draft={draft} uid={uid} players={players}
         onOpenPlayer={setCard} goDraft={goDraft} />
       {card && (
-        <PlayerCard p={card} projKey={projKey} myTurn={false} busy={false}
+        <PlayerCard p={card} projKey={projKey} myTurn={false} busy={dropBusy}
           queued={false} onQueue={() => {}} onDraft={() => {}}
+          mine={mineIds.has(card.id)}
+          waiverDays={(league.settings && league.settings.transactions
+                       && league.settings.transactions.waiver_period) ?? 1}
+          onDrop={async () => {
+            setDropBusy(true)
+            const { error } = await supabase.rpc('drop_player', {
+              p_team_id: myTeam.id, p_player_id: card.id })
+            setDropBusy(false)
+            if (!error) { await loadMine(); setCard(null); window.location.reload() }
+          }}
           onClose={() => setCard(null)} />
       )}
     </>

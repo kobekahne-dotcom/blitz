@@ -854,3 +854,26 @@ html[data-theme="dark"] .sheetback { background: rgba(0,0,0,.7); }
 }
 .wvbtn.on { background: var(--info-bg); color: var(--brand); }
 .wvbtn:disabled { opacity: .75; }
+
+/* ---------- drop picker ---------- */
+.droprow {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 10px; margin-bottom: 7px; text-align: left;
+  background: var(--chipbg); border: 1px solid transparent; border-radius: 10px;
+  color: inherit; font-family: inherit; min-height: 54px;
+}
+.droprow.on { border-color: var(--bad); background: var(--bad-bg); }
+.droprow .who { flex: 1; min-width: 0; display: block; }
+.droprow .nm { display: block; font-size: 14.5px; font-weight: 700; color: var(--ink); }
+.droprow .sub { display: flex; align-items: center; gap: 4px; }
+.startflag { color: var(--good); font-size: 9px; font-weight: 800; letter-spacing: .05em; }
+.droprow.on .startflag { color: var(--bad); }
+
+/* the confirm on a long picker must stay in reach, not sit under 15 rows */
+.sheet-foot {
+  position: sticky; bottom: 0; z-index: 6;
+  margin: 4px -16px 0; padding: 8px 16px calc(4px + env(safe-area-inset-bottom));
+  background: var(--surface); box-shadow: 0 -6px 14px rgba(0,0,0,.10);
+}
+html[data-theme="dark"] .sheet-foot { box-shadow: 0 -6px 14px rgba(0,0,0,.45); }
+.sheet-foot .btn.block { margin-top: 6px; }
