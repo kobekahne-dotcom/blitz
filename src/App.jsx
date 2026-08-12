@@ -31,6 +31,38 @@ function Avatar({ p, size = 40, eager = false }) {
   )
 }
 
+/* ---------- light / dark ----------
+   The OS choice applies until the first tap; after that the choice is
+   pinned and remembered. The inline script in index.html applies the
+   saved theme before first paint, so there is no flash. */
+function ThemeToggle() {
+  const [dark, setDark] = useState(document.documentElement.dataset.theme === 'dark')
+  const flip = () => {
+    // read the DOM, not React state — two fast taps through a stale
+    // closure would otherwise both land on the same theme
+    const next = document.documentElement.dataset.theme !== 'dark'
+    setDark(next)
+    document.documentElement.dataset.theme = next ? 'dark' : 'light'
+    try { localStorage.setItem('blitz-theme', next ? 'dark' : 'light') } catch {}
+    document.querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', next ? '#121316' : '#14B0D0')
+  }
+  return (
+    <button className="themebtn" onClick={flip} aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'}>
+      {dark ? (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <circle cx="12" cy="12" r="4.4" fill="currentColor" stroke="none" />
+          <path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M19.1 4.9l-1.7 1.7M6.6 17.4l-1.7 1.7" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <path d="M20.4 14.2a8.5 8.5 0 0 1-10.6-10.6A8.5 8.5 0 1 0 20.4 14.2Z" />
+        </svg>
+      )}
+    </button>
+  )
+}
+
 function useHashRoute() {
   const [hash, setHash] = useState(window.location.hash || '#/')
   useEffect(() => {
@@ -124,6 +156,7 @@ export default function App() {
           : null}
         <div className="logo" onClick={() => go('#/')}>BL<span>I</span>TZ</div>
         <div className="microlabel topsub">Draft Room · 2026</div>
+        <ThemeToggle />
       </div>
       <InstallPrompt />
       {body}
@@ -329,7 +362,7 @@ function Lobby({ league, teams, uid, connIssue }) {
       {isCommish ? (
         <>
           <div className="notice">Draft order is randomised when you start. Anyone not in by then is left out.</div>
-          <button className="btn block big danger" disabled={busy || teams.length < 2}
+          <button className="btn block big" disabled={busy || teams.length < 2}
             onClick={async () => {
               if (!window.confirm(`Start the draft with ${teams.length} teams? Nobody else can join after this.`)) return
               await call('start_draft', { p_league_id: league.id })
@@ -422,24 +455,43 @@ function DraftWhen({ league, isCommish, onSaved }) {
    DRAFT ROOM
    ============================================================ */
 
-/* A compact, position-aware stat line for the list — last season's real numbers. */
-function statLine(p, projKey) {
-  const ly = p.lyd || {}, pr = p.projd || {}
-  const bit = (v, lab) => v == null ? null : `${v} ${lab}`
-  let parts = []
-  if (p.pos === 'QB') {
-    parts = [bit(ly.pass_yd, 'pass yd'), bit(ly.pass_td, 'TD'), bit(ly.rush_yd, 'rush yd')]
-  } else if (p.pos === 'RB') {
-    parts = [bit(ly.rush_yd, 'rush yd'), bit(ly.touch, 'touches'), bit(ly.ypc, 'ypc')]
-  } else if (p.pos === 'WR' || p.pos === 'TE') {
-    parts = [bit(ly.rec, 'rec'), bit(ly.rec_yd, 'yd'), bit(ly.tgt_share, '% tgt share')]
+/* ---------- the sideways stat columns (Sleeper's best idea) ----------
+   Every row carries its own labelled cells, so a QB and an RB can sit in
+   the same list showing different columns; one shared scroll container
+   pans them all together. All numbers are last season's real stats,
+   already loaded on the player row — nothing is fetched per row.
+   No RTG column: Sleeper's feed has no passer rating in players.lyd,
+   so CMP% is computed from real completions/attempts instead. */
+const SCROLL_COLS = {
+  QB: [['pass_yd', 'PASS YD'], ['pass_td', 'PASS TD'], ['pass_int', 'INT'],
+       ['pass_att', 'ATT'], ['pass_cmp', 'CMP'], ['cmp_pct', 'CMP%'],
+       ['rush_yd', 'RUSH YD'], ['rush_td', 'RUSH TD'], ['ppg', 'PPG']],
+  RB: [['rush_yd', 'RUSH YD'], ['rush_att', 'CAR'], ['ypc', 'YPC'], ['rush_td', 'RUSH TD'],
+       ['rec', 'REC'], ['rec_yd', 'REC YD'], ['rec_tgt', 'TAR'], ['touch', 'TOUCHES'], ['ppg', 'PPG']],
+  WR: [['rec', 'REC'], ['rec_tgt', 'TAR'], ['rec_yd', 'REC YD'], ['ypr', 'Y/R'], ['rec_td', 'REC TD'],
+       ['catch_pct', 'CATCH%'], ['tgt_share', 'TGT%'], ['ypt', 'YD/TAR'], ['ppg', 'PPG']],
+  K:  [['gp', 'GP'], ['ppg', 'PPG']],
+  DEF: [['gp', 'GP'], ['ppg', 'PPG']],
+}
+SCROLL_COLS.TE = SCROLL_COLS.WR
+
+function statCells(p, projKey) {
+  const ly = p.lyd || {}
+  const get = k => {
+    if (k === 'cmp_pct') {
+      return (ly.pass_cmp != null && ly.pass_att)
+        ? Math.round(ly.pass_cmp / ly.pass_att * 1000) / 10 : null
+    }
+    return ly[k]
   }
-  parts = parts.filter(Boolean)
-  if (!parts.length) {
-    if (pr.gp) return `${pr.gp} games projected`
-    return 'No 2025 stats'
-  }
-  return "'25: " + parts.join(' · ')
+  const cells = [
+    ['2026 PROJ', p[projKey]],
+    ['ADP', p.adp],
+    ...(SCROLL_COLS[p.pos] || []).map(([k, lab]) => ["'25 " + lab, get(k)]),
+  ]
+  return cells.map(([lab, v]) => (
+    <div className="scell" key={lab}><s>{lab}</s><b>{v ?? '—'}</b></div>
+  ))
 }
 
 
@@ -662,6 +714,18 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
     loadQueue()
   }
 
+  // queue order is what autopick trusts, so it has to be editable
+  const moveQueue = async (i, dir) => {
+    const j = i + dir
+    if (j < 0 || j >= queue.length) return
+    const a = queue[i], b = queue[j]
+    await supabase.from('queues').update({ rank: b.rank })
+      .eq('team_id', myTeam.id).eq('player_id', a.player_id)
+    await supabase.from('queues').update({ rank: a.rank })
+      .eq('team_id', myTeam.id).eq('player_id', b.player_id)
+    loadQueue()
+  }
+
   const commish = async (fn, args = {}) => {
     setBusy(true); setActErr(null)
     const { error } = await supabase.rpc(fn, { p_draft_id: draft.id, ...args })
@@ -694,6 +758,16 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
 
   const queueIds = new Set(queue.map(x => x.player_id))
   const myPicks = picks.filter(p => myTeam && p.team_id === myTeam.id)
+
+  // how many of each position I've drafted, for the filter-chip counters
+  const posCounts = useMemo(() => {
+    const c = {}
+    for (const pk of myPicks) {
+      const pl = playerById.get(pk.player_id)
+      if (pl) c[pl.pos] = (c[pl.pos] || 0) + 1
+    }
+    return c
+  }, [picks, myTeam?.id, playerById])
   const lastPick = picks[picks.length - 1]
   const lastPlayer = lastPick ? playerById.get(lastPick.player_id) : null
 
@@ -791,46 +865,48 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
               )}
               <div className="searchwrap"><input className="search" placeholder="Search players" value={q} onChange={e => setQ(e.target.value)} /></div>
               <div className="chips">
-                {POS_FILTERS.map(f => (
-                  <button key={f.k} className={posKey === f.k ? 'on' : ''}
-                    onClick={() => setPosKey(f.k)}>{f.label}</button>
-                ))}
+                {POS_FILTERS.map(f => {
+                  // K 0/1 · RB 2/2 — drafted so far vs starting slots
+                  const cfg = league.roster || { QB: 1, RB: 2, WR: 2, TE: 1, FLEX: 1, K: 1, DEF: 1 }
+                  const need = f.k === 'FLEX' ? null : cfg[f.k]
+                  const have = posCounts[f.k] || 0
+                  return (
+                    <button key={f.k} className={posKey === f.k ? 'on' : ''}
+                      onClick={() => setPosKey(f.k)}>
+                      {f.label}
+                      {myTeam && need != null && f.k !== 'ALL' &&
+                        <i className={'cnt' + (have >= need ? ' full' : '')}>{have}/{need}</i>}
+                    </button>
+                  )
+                })}
               </div>
-              <div className="listhead">
-                <span className="lh-rk">RK</span>
-                <span className="lh-pl">PLAYER</span>
-                <span className="lh-n">PROJ</span>
-                <span className="lh-n">ADP</span>
-              </div>
-              <div className="plist">
+              <div className="plist hscroll">
                 {withMarkers(available.slice(0, shown), myUpcoming, league.num_teams).map((p, i) => (
                   p.__marker ? (
-                    <div className="pickmarker" key={'mk' + p.pick}>
-                      <span>YOUR PICK (R{p.round}, P{p.inRound})</span>
+                    <div className="pickmarker hrow" key={'mk' + p.pick}>
+                      <span>PROJ PICK: ROUND {p.round} OVERALL #{p.pick}</span>
                     </div>
                   ) : (
-                  <div className="row tap nopad" key={p.id} onClick={() => setConfirmP(p)}>
-                    <div className="rankcell">{p.pos}{p.prank ?? ''}</div>
-                    <Avatar p={p} size={38} eager={i < 15} />
-                    <div className="who">
-                      <div className="nm">
-                        {p.name}
-                        <span className={'posbadge bg-' + p.pos}>{p.pos}</span>
-                        {p.inj && <span className="qflag">{p.inj.slice(0, 1)}</span>}
+                  <div className="row tap nopad hrow" key={p.id} onClick={() => setConfirmP(p)}>
+                    <div className="hfix">
+                      <Avatar p={p} size={38} eager={i < 15} />
+                      <div className="who">
+                        <div className="nm">
+                          {p.name}
+                          {p.inj && <span className="qflag">{p.inj.slice(0, 1)}</span>}
+                        </div>
+                        <div className="sub">
+                          <span className={'posbadge bg-' + p.pos}>{p.pos}{p.prank ?? ''}</span>
+                          <span className="dot">·</span>{p.team || 'FA'}
+                          <span className="dot">·</span>({p.bye ?? '—'})
+                        </div>
                       </div>
-                      <div className="sub">
-                        {p.team || 'FA'}<span className="dot">·</span>Bye {p.bye ?? '—'}
-                        <span className="dot">·</span>{statLine(p, projKey)}
-                      </div>
+                      <button className={'rowbtn star' + (queueIds.has(p.id) ? ' on' : '')}
+                        onClick={e => { e.stopPropagation(); toggleQueue(p) }} title="Queue">★</button>
+                      <button className="rowbtn add" disabled={!myTurn || busy} title="Draft"
+                        onClick={e => { e.stopPropagation(); doPick(p) }}>+</button>
                     </div>
-                    <button className={'rowbtn star' + (queueIds.has(p.id) ? ' on' : '')}
-                      onClick={e => { e.stopPropagation(); toggleQueue(p) }} title="Queue">★</button>
-                    <button className="rowbtn add" disabled={!myTurn || busy} title="Draft"
-                      onClick={e => { e.stopPropagation(); doPick(p) }}>+</button>
-                    <div className="nums">
-                      <div className="num"><b>{p[projKey] ?? '—'}</b><s>PROJ</s></div>
-                      <div className="num"><b>{p.adp ?? '—'}</b><s>ADP</s></div>
-                    </div>
+                    <div className="hstats">{statCells(p, projKey)}</div>
                   </div>
                   )
                 ))}
@@ -863,6 +939,12 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
                     <div className="nm">{p.name}<span className={'posbadge bg-' + p.pos}>{p.pos}</span></div>
                     <div className="sub">{p.team || 'FA'}{gone ? ' · taken' : ''}</div>
                   </div>
+                  {!gone && <>
+                    <button className="rowbtn" disabled={i === 0} title="Move up"
+                      onClick={() => moveQueue(i, -1)}>↑</button>
+                    <button className="rowbtn" disabled={i === queue.length - 1} title="Move down"
+                      onClick={() => moveQueue(i, 1)}>↓</button>
+                  </>}
                   <button className="rowbtn" onClick={() => toggleQueue(p)}>✕</button>
                 </div>
               )

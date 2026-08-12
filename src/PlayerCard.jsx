@@ -66,8 +66,9 @@ export default function PlayerCard({ p, projKey, myTurn, busy, onDraft, onQueue,
         <div className="sheet-grab" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} />
         <button className="sheet-close" onClick={onClose} aria-label="Close">✕</button>
 
-        {/* ---- hero ---- */}
+        {/* ---- hero — faint team watermark behind, NFL-style ---- */}
         <div className="pc-hero">
+          {teamLogo(p.team) && <img className="pc-water" src={teamLogo(p.team)} alt="" />}
           <div className="pc-shot">
             {imgFail || isDef
               ? <div className="pic" style={{width:66,height:66}}><span className={'ph pos-' + p.pos}>{p.pos}</span></div>
@@ -84,12 +85,20 @@ export default function PlayerCard({ p, projKey, myTurn, busy, onDraft, onQueue,
           </div>
         </div>
 
-        {/* ---- headline numbers ---- */}
+        {/* ---- headline strip: labels above values, rank in the hexagon ---- */}
         <div className="pc-topstats">
-          <div><b>{p.pos}{n(p.prank)}</b><span>POS RANK</span></div>
+          <div><b>{n(p.bye)}</b><span>BYE WK</span></div>
           <div><b>{n(p[projKey])}</b><span>2026 PROJ</span></div>
+          <div className="pc-hex">
+            <div className="hex">
+              <div>
+                <span>{p.pos} RNK</span>
+                <b>{n(p.prank)}</b>
+              </div>
+            </div>
+          </div>
           <div><b>{n(p.adp)}</b><span>ADP</span></div>
-          <div><b>{n(p.bye)}</b><span>BYE</span></div>
+          <div><b>{n((p.lyd || {}).ppg)}</b><span>'25 PPG</span></div>
         </div>
 
         <div className="pc-tabs">
@@ -223,7 +232,9 @@ export default function PlayerCard({ p, projKey, myTurn, busy, onDraft, onQueue,
 
         <div className="pc-actions">
           <button className="btn secondary" onClick={onQueue}>{queued ? '★ Queued' : '☆ Queue'}</button>
-          <button className="btn big danger flex" disabled={!myTurn || busy} onClick={onDraft}>
+          {/* green, not red — in this design language red means bad news,
+              and drafting a guy is the happiest tap in the app */}
+          <button className="btn big good flex" disabled={!myTurn || busy} onClick={onDraft}>
             {busy ? 'Drafting…' : myTurn ? 'Draft him' : 'Not your turn'}
           </button>
         </div>
