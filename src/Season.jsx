@@ -237,6 +237,20 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
     return scorePlayer(fromSleeperWeek(raw, p.pos), scoringCfg, p.pos)
   }
   const gameOf = (p) => (p && live?.gameByTeam?.[p.team]) || null
+
+  /* ON FIELD / SIDELINE, the way the NFL app showed it. A player counts as
+     on the field when his game is being played and his own team has the
+     ball. Kickers and defences are the exception — a defence is on the
+     field precisely when its team does NOT have it. */
+  const fieldState = (p) => {
+    const g = gameOf(p)
+    if (!g || !g.inPlay) return null
+    if (!g.possession) return 'sideline'          // between plays, nobody has it
+    const theirBall = g.hasBall
+    if (p.pos === 'DEF') return theirBall ? 'sideline' : 'field'
+    if (p.pos === 'K') return 'sideline'          // only out for kicks
+    return theirBall ? 'field' : 'sideline'
+  }
   const shownPts = (p) => {
     const l = liveOf(p)
     return l == null ? perGame(p, projKey) : l
@@ -420,8 +434,16 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
                         {p?.team || 'FA'}
                         {gameOf(p)
                           ? <><span className="dot">·</span>
-                              <b className={'gclock' + (gameOf(p).done ? '' : gameOf(p).state === 'in' ? ' on' : '')}>
-                                {gameOf(p).detail}</b></>
+                              <b className={'gclock' + (gameOf(p).done ? '' : gameOf(p).inPlay ? ' on' : '')}>
+                                {gameOf(p).detail}</b>
+                              {fieldState(p) && (
+                                <span className={'fieldpill ' + fieldState(p)}>
+                                  {fieldState(p) === 'field' ? 'ON FIELD' : 'SIDELINE'}
+                                </span>
+                              )}
+                              {gameOf(p)?.hasBall && gameOf(p)?.downDistance &&
+                                <span className="dnd">{gameOf(p).downDistance}</span>}
+                            </>
                           : <> · Bye {p?.bye ?? '—'}</>}
                       </div>
                     </div>
@@ -448,8 +470,16 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
                         {p?.team || 'FA'}
                         {gameOf(p)
                           ? <><span className="dot">·</span>
-                              <b className={'gclock' + (gameOf(p).done ? '' : gameOf(p).state === 'in' ? ' on' : '')}>
-                                {gameOf(p).detail}</b></>
+                              <b className={'gclock' + (gameOf(p).done ? '' : gameOf(p).inPlay ? ' on' : '')}>
+                                {gameOf(p).detail}</b>
+                              {fieldState(p) && (
+                                <span className={'fieldpill ' + fieldState(p)}>
+                                  {fieldState(p) === 'field' ? 'ON FIELD' : 'SIDELINE'}
+                                </span>
+                              )}
+                              {gameOf(p)?.hasBall && gameOf(p)?.downDistance &&
+                                <span className="dnd">{gameOf(p).downDistance}</span>}
+                            </>
                           : <> · Bye {p?.bye ?? '—'}</>}
                       </div>
                     </div>

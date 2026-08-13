@@ -69,13 +69,48 @@ const LABEL = {
   postponed: 'Postponed', canceled: 'Canceled',
 }
 
-/* One week: every player's raw line plus each team's game state. */
+/* Quarter label the way a scoreboard says it. */
+const QLABEL = { 1: '1st', 2: '2nd', 3: '3rd', 4: '4th', F: 'Final' }
+
+/* One week: every player's raw line plus each team's live game state —
+   quarter, clock, score, and crucially WHO HAS THE BALL, which is what
+   lets a player read as on the field rather than on the sideline. */
 export async function fetchLiveWeek(season, week) {
-  const [statsRes, sched] = await Promise.all([
+  const [statsRes, scoresRes, sched] = await Promise.all([
     fetch(`${BASE}/v1/stats/nfl/regular/${season}/${week}`),
+    fetch(`${BASE}/scores/nfl/regular/${season}/${week}`),
     schedule(season),
   ])
   const raw = statsRes.ok ? await statsRes.json() : {}
+  const scores = scoresRes.ok ? await scoresRes.json() : []
+
+  // live detail, keyed by team
+  const detailByTeam = {}
+  for (const g of scores) {
+    const m = g.metadata || {}
+    const inPlay = !!m.is_in_progress
+    const over = !!m.is_over
+    const q = m.quarter_num || m.quarter
+    const clock = m.time_remaining || ''
+    const label = over ? 'Final'
+        : inPlay ? `${QLABEL[q] || ('Q' + q)}${clock ? ' ' + clock : ''}`
+        : ''
+    for (const side of ['home', 'away']) {
+      const team = m[side + '_team']
+      if (!team) continue
+      const opp = m[(side === 'home' ? 'away' : 'home') + '_team']
+      detailByTeam[team] = {
+        inPlay, over, label,
+        quarter: q, clock,
+        score: m[side + '_score'], oppScore: m[(side === 'home' ? 'away' : 'home') + '_score'],
+        opp, home: side === 'home',
+        // possession is the team abbreviation with the ball, blank between plays
+        hasBall: !!m.possession && m.possession === team,
+        possession: m.possession || '',
+        downDistance: m.down_and_distance || '',
+      }
+    }
+  }
 
   const gameByTeam = {}
   let live = 0, finals = 0, games = 0
@@ -84,14 +119,26 @@ export async function fetchLiveWeek(season, week) {
     games++
     if (g.status === 'complete') finals++
     else if (g.status === 'in_game') live++
-    const st = {
+    const base = {
       state: g.status === 'complete' ? 'post' : g.status === 'in_game' ? 'in' : 'pre',
       done: g.status === 'complete',
       detail: LABEL[g.status] ?? g.status,
       date: g.date,
     }
-    if (g.home) gameByTeam[g.home] = { ...st, opp: g.away, home: true }
-    if (g.away) gameByTeam[g.away] = { ...st, opp: g.home, home: false }
+    for (const [team, opp, home] of [[g.home, g.away, true], [g.away, g.home, false]]) {
+      if (!team) continue
+      const d = detailByTeam[team]
+      gameByTeam[team] = {
+        ...base, opp, home,
+        // the live feed knows more than the schedule does — prefer it
+        detail: (d && d.label) || base.detail,
+        hasBall: !!(d && d.hasBall),
+        possession: d?.possession || '',
+        downDistance: d?.downDistance || '',
+        score: d?.score, oppScore: d?.oppScore,
+        inPlay: !!(d && d.inPlay),
+      }
+    }
   }
 
   return { raw, gameByTeam, live, finals, games }
