@@ -127,6 +127,7 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
   const [live, setLive] = useState(null)        // {stats, gameByTeam, live, finals}
   const [nfl, setNfl] = useState(null)          // which week the NFL is actually on
   const [scoringCfg, setScoringCfg] = useState(null)
+  const [table, setTable] = useState(null)   // real standings once weeks are final
 
   const myTeam = teams.find(t => t.owner_uid === uid)
   const byId = useMemo(() => new Map((players || []).map(p => [p.id, p])), [players])
@@ -146,12 +147,19 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
 
   useEffect(() => { loadLineup() }, [loadLineup])
 
+  const loadMatchups = useCallback(() => {
+    supabase.from('matchups').select('*').eq('league_id', league.id).order('week')
+      .then(({ data }) => setMatchups(data || []))
+    supabase.rpc('standings', { p_league_id: league.id })
+      .then(({ data }) => setTable(data || null)).catch(() => {})
+  }, [league.id])
+
   useEffect(() => {
     supabase.from('picks').select('team_id,player_id,pick_no').eq('draft_id', draft.id)
       .then(({ data }) => setAllPicks(data || []))
-    supabase.from('matchups').select('*').eq('league_id', league.id).order('week')
-      .then(({ data }) => setMatchups(data || []))
+    loadMatchups()
   }, [draft.id, league.id])
+
 
   /* The roster is a real table now, not the draft picks. Seed it once from
      the draft the first time anyone opens the season screen. */
@@ -204,6 +212,7 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
     return () => clearInterval(iv)
   }, [live?.live, pullLive])
 
+
   /* Claims settle in the database on a heartbeat, the same way the draft
      clock does — never on a browser's idea of what time it is. */
   useEffect(() => {
@@ -233,6 +242,10 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
     return l == null ? perGame(p, projKey) : l
   }
   const isLive = !!live && (live.live > 0 || live.finals > 0)
+  /* the season is as long as the league says, plus its playoff rounds —
+     a hardcoded 14 hid weeks 15-17 from anyone who reaches the final */
+  const lastWeek = (league.regular_weeks || 14) +
+    Math.ceil(Math.log2(Math.max(2, league.playoff_teams || 4)))
 
   const projTotal = starters.reduce((s, l) => s + (shownPts(byId.get(l.player_id)) || 0), 0)
 
@@ -242,7 +255,21 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
     ? (myMatchup.home_team_id === myTeam?.id ? myMatchup.away_team_id : myMatchup.home_team_id)
     : null
 
+  /* Once a player's game kicks off his slot is frozen, the way it is in
+     every real fantasy app. Without this you could watch someone score 30
+     and then slide him into your lineup afterwards. */
+  const lockedFor = (playerId) => {
+    const p = byId.get(playerId)
+    const g = gameOf(p)
+    return !!g && g.state !== 'pre'
+  }
+
   const tapPlayer = async (l) => {
+    if (lockedFor(l.player_id)) {
+      setErr(`${byId.get(l.player_id)?.name || 'That player'}'s game has started — his spot is locked.`)
+      setSel(null); return
+    }
+    if (sel && lockedFor(sel)) { setSel(null); return }
     if (!sel) { setSel(l.player_id); return }
     if (sel === l.player_id) { setSel(null); return }
     setBusy(true); setErr(null)
@@ -317,6 +344,28 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
       })
   }, [oppId, week, allPicks])
 
+  /* Once every game in a week is final, write the result down. Each
+     manager reports the matchup THEY can see; record_week ignores a
+     matchup whose scores aren't both known and refuses to touch a week
+     already marked final, so five phones reporting the same week is
+     harmless and between them every game gets recorded. */
+  useEffect(() => {
+    if (!live || !scoringCfg || !myTeam || !myMatchup || myMatchup.final) return
+    if (!live.games || live.finals < live.games) return          // week still running
+    const total = (ids) => ids.reduce((sum, id) => {
+      const p = byId.get(id)
+      const raw = p && live.raw[p.id]
+      return sum + (raw ? scorePlayer(fromSleeperWeek(raw, p.pos), scoringCfg, p.pos) : 0)
+    }, 0)
+    const mineIds = (lineup || []).filter(l => l.slot !== 'BN').map(l => l.player_id)
+    const oppIds = (oppStarters || []).filter(x => x.p).map(x => x.p.id)
+    if (!mineIds.length || !oppIds.length) return
+    supabase.rpc('record_week', {
+      p_league_id: league.id, p_week: week,
+      p_scores: { [myTeam.id]: total(mineIds), [oppId]: total(oppIds) },
+    }).then(({ data }) => { if (data?.recorded) loadMatchups() }).catch(() => {})
+  }, [live?.finals, live?.games, scoringCfg, myMatchup?.id, lineup, oppStarters, week])
+
   if (info) return (
     <LeagueInfo league={league} teams={teams} uid={uid}
       startTab={info === 'activity' ? 'activity' : 'league'}
@@ -340,7 +389,7 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
       <div className="weekbar">
         <button className="wk" disabled={week <= 1} onClick={() => setWeek(w => w - 1)}>‹</button>
         <span>Week {week}</span>
-        <button className="wk" disabled={week >= 14} onClick={() => setWeek(w => w + 1)}>›</button>
+        <button className="wk" disabled={week >= lastWeek} onClick={() => setWeek(w => w + 1)}>›</button>
       </div>
 
       {/* ---------------- MY TEAM ---------------- */}
@@ -359,7 +408,8 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
               {sortSlots(starters).map(l => {
                 const p = byId.get(l.player_id)
                 return (
-                  <div className={'row tap nopad' + (sel === l.player_id ? ' sel' : '')} key={l.player_id}
+                  <div className={'row tap nopad' + (sel === l.player_id ? ' sel' : '') +
+                      (lockedFor(l.player_id) ? ' lockedrow' : '')} key={l.player_id}
                     onClick={() => tapPlayer(l)}>
                     <div className={"slotpill " + l.slot}>{l.slot}</div>
                     <Shot p={p} size={38} />
@@ -568,23 +618,35 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
           </button>
 
           <div className="sect"><h2>Standings</h2></div>
-          {teams.map((t, i) => {
-            const roster = rosterOf(t.id)
-            const total = roster.slice(0, 9).reduce((s, p) => s + (perGame(p, projKey) || 0), 0)
+          {(table && table.length ? table : teams.map((t, i) => ({
+            id: t.id, name: t.name, rank: i + 1, wins: 0, losses: 0, ties: 0, points_for: null,
+          }))).map(row => {
+            const mine = row.id === myTeam?.id
+            const played = (row.wins + row.losses + row.ties) > 0
             return (
-              <div className="row nopad" key={t.id}>
-                <div className="slotpill">{i + 1}</div>
+              <div className="row nopad" key={row.id}>
+                <div className="slotpill">{row.rank}</div>
                 <div className="who">
-                  <div className="nm">{t.name}{t.owner_uid === uid ? ' (you)' : ''}</div>
-                  <div className="sub">0–0 · {roster.length} players</div>
+                  <div className="nm">{row.name}{mine ? ' (you)' : ''}</div>
+                  <div className="sub">
+                    {row.wins}–{row.losses}{row.ties ? `–${row.ties}` : ''}
+                    <span className="dot">·</span>
+                    {played ? `${Number(row.points_for).toFixed(1)} pts` : `${rosterOf(row.id).length} players`}
+                  </div>
                 </div>
-                <div className="nums"><div className="num"><b>{total.toFixed(0)}</b><s>PROJ</s></div></div>
+                <div className="nums"><div className="num">
+                  <b>{played ? Number(row.points_for).toFixed(0)
+                             : rosterOf(row.id).slice(0, 9).reduce((s, p) => s + (perGame(p, projKey) || 0), 0).toFixed(0)}</b>
+                  <s>{played ? 'PF' : 'PROJ'}</s>
+                </div></div>
               </div>
             )
           })}
-          <div className="notice mt14">
-            Records are 0–0 until week 1 is played. Standings will sort by wins once games count.
-          </div>
+          {!(table && table.some(r => r.wins + r.losses + r.ties > 0)) && (
+            <div className="notice mt14">
+              Records fill in as weeks finish. Until then this is ordered by projected points.
+            </div>
+          )}
         </div>
       )}
     </div>
