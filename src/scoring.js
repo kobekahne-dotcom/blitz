@@ -37,14 +37,11 @@ export function scorePlayer(stats, scoring, pos) {
     pts += num(s.blocked) * num(D.BLK)
     pts += (num(s.def_td) + num(s.kr_td) + num(s.pr_td)) * num(D.DTD)
     const pa = num(s.pts_allowed)
-    pts += pa === 0 ? num(D.PA0)
-         : pa <= 6  ? num(D.PA1)
-         : pa <= 13 ? num(D.PA7)
-         : pa <= 17 ? num(D.PA14)
-         : pa <= 27 ? num(D.PA18)
-         : pa <= 34 ? num(D.PA28)
-         : pa <= 45 ? num(D.PA35)
-         : num(D.PA46)
+    const cut = D.PA_TIERS || [0, 6, 13, 17, 27, 34, 45]   // ESPN's boundaries
+    const keys = ['PA0', 'PA1', 'PA7', 'PA14', 'PA18', 'PA28', 'PA35']
+    let hit = 'PA46'
+    for (let i = 0; i < cut.length; i++) if (pa <= cut[i]) { hit = keys[i]; break }
+    pts += num(D[hit])
     return Math.round(pts * 100) / 100
   }
 
@@ -180,5 +177,7 @@ export const SLEEPER_PPR = {
   kicking:   { PAT: 1, PATM: -1, FG0: 3, FG40: 4, FG50: 5, FGM: -1 },
   misc:      { FTD: 6, FUML: -2, KRTD: 6, PRTD: 6, STFF: 1, STFR: 1 },
   dst:       { SK: 1, INT: 2, FR: 2, SF: 2, BLK: 2, DTD: 6,
-               PA0: 10, PA1: 7, PA7: 4, PA14: 1, PA18: 0, PA28: -1, PA35: -3, PA46: -5 },
+               // Sleeper's own tiers, which differ from ESPN's at 14-20
+               PA_TIERS: [0, 6, 13, 20, 27, 34, 45],
+               PA0: 10, PA1: 7, PA7: 4, PA14: 1, PA18: 0, PA28: -1, PA35: -4, PA46: -4 },
 }

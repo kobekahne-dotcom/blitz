@@ -2,6 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from './supabase.js'
 import LeagueInfo from './LeagueInfo.jsx'
 import { useScrollLock } from './lockScroll.js'
+import { fetchLiveWeek, currentWeek, fromSleeperWeek } from './live.js'
+import { scorePlayer } from './scoring.js'
 
 const headshot = id => `https://sleepercdn.com/content/nfl/players/${id}.jpg`
 const teamLogo = t => t ? `https://sleepercdn.com/images/team_logos/nfl/${t.toLowerCase()}.png` : null
@@ -122,6 +124,9 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
   const [txErr, setTxErr] = useState(null)
   const [txBusy, setTxBusy] = useState(false)
   const [pending, setPending] = useState(null)   // {player, mode} awaiting a drop choice
+  const [live, setLive] = useState(null)        // {stats, gameByTeam, live, finals}
+  const [nfl, setNfl] = useState(null)          // which week the NFL is actually on
+  const [scoringCfg, setScoringCfg] = useState(null)
 
   const myTeam = teams.find(t => t.owner_uid === uid)
   const byId = useMemo(() => new Map((players || []).map(p => [p.id, p])), [players])
@@ -169,6 +174,36 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
   }, [league.id])
   useEffect(() => { loadRoster() }, [loadRoster])
 
+  /* The league's own scoring rules drive every number on screen. */
+  useEffect(() => {
+    supabase.rpc('league_settings', { p_league_id: league.id })
+      .then(({ data }) => setScoringCfg(data?.scoring || null)).catch(() => {})
+    /* ?replay=2025:1 pins the live feed to a week that has actually been
+       played. It is how live scoring gets tested before September, and it
+       labels itself on screen so a replay can never be mistaken for today. */
+    const rp = new URLSearchParams(location.search).get('replay')
+    if (rp && /^\d{4}:\d{1,2}$/.test(rp)) {
+      const [y, w] = rp.split(':').map(Number)
+      setNfl({ season: y, week: w, regular: true, replay: true })
+    } else {
+      currentWeek().then(setNfl).catch(() => {})
+    }
+  }, [league.id])
+
+  /* Live scores. Every client reads the same public feed and runs the same
+     deterministic engine, so all five managers see identical numbers. Games
+     that have finished are cached, so a quiet Tuesday costs one request. */
+  const pullLive = useCallback(async () => {
+    if (!nfl?.regular || !nfl.season) return
+    try { setLive(await fetchLiveWeek(nfl.season, nfl.replay ? nfl.week : week)) } catch {}
+  }, [nfl?.regular, nfl?.season, nfl?.replay, nfl?.week, week])
+  useEffect(() => { pullLive() }, [pullLive])
+  useEffect(() => {
+    if (!live?.live) return                     // nothing in progress, no need to poll
+    const iv = setInterval(pullLive, 45000)
+    return () => clearInterval(iv)
+  }, [live?.live, pullLive])
+
   /* Claims settle in the database on a heartbeat, the same way the draft
      clock does — never on a browser's idea of what time it is. */
   useEffect(() => {
@@ -184,7 +219,22 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
   const sortSlots = arr => [...arr].sort((a, b) =>
     SLOT_ORDER.indexOf(a.slot) - SLOT_ORDER.indexOf(b.slot))
 
-  const projTotal = starters.reduce((s, l) => s + (perGame(byId.get(l.player_id), projKey) || 0), 0)
+  /* What a player is worth RIGHT NOW. Before kickoff that is the weekly
+     projection; once his game starts it is what he has actually scored. */
+  const liveOf = (p) => {
+    if (!p || !live || !scoringCfg) return null
+    const raw = live.raw[p.id]
+    if (!raw) return null
+    return scorePlayer(fromSleeperWeek(raw, p.pos), scoringCfg, p.pos)
+  }
+  const gameOf = (p) => (p && live?.gameByTeam?.[p.team]) || null
+  const shownPts = (p) => {
+    const l = liveOf(p)
+    return l == null ? perGame(p, projKey) : l
+  }
+  const isLive = !!live && (live.live > 0 || live.finals > 0)
+
+  const projTotal = starters.reduce((s, l) => s + (shownPts(byId.get(l.player_id)) || 0), 0)
 
   const myMatchup = (matchups || []).find(m =>
     m.week === week && (m.home_team_id === myTeam?.id || m.away_team_id === myTeam?.id))
@@ -207,6 +257,7 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
     .filter(p => p.team_id === teamId)
     .map(p => byId.get(p.player_id)).filter(Boolean)
     .sort((a, b) => (b[projKey] || 0) - (a[projKey] || 0))
+
 
   /* free / waivers / rostered, computed once for the whole player list */
   const waiverBy = useMemo(() => new Map(waivers.map(w => [w.player_id, w.clears_at])), [waivers])
@@ -316,10 +367,18 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
                       <div className="nm">{p?.name || l.player_id}</div>
                       <div className="sub">
                         <span className={'posbadge bg-' + (p?.pos || '')}>{p?.pos}</span>
-                        {p?.team || 'FA'} · Bye {p?.bye ?? '—'}
+                        {p?.team || 'FA'}
+                        {gameOf(p)
+                          ? <><span className="dot">·</span>
+                              <b className={'gclock' + (gameOf(p).done ? '' : gameOf(p).state === 'in' ? ' on' : '')}>
+                                {gameOf(p).detail}</b></>
+                          : <> · Bye {p?.bye ?? '—'}</>}
                       </div>
                     </div>
-                    <div className="nums"><div className="num"><b>{perGame(p, projKey) ?? '—'}</b><s>PROJ</s></div></div>
+                    <div className="nums"><div className="num">
+                      <b>{shownPts(p) ?? '—'}</b>
+                      <s>{liveOf(p) == null ? 'PROJ' : (gameOf(p)?.done ? 'FINAL' : 'LIVE')}</s>
+                    </div></div>
                   </div>
                 )
               })}
@@ -336,10 +395,18 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
                       <div className="nm">{p?.name || l.player_id}</div>
                       <div className="sub">
                         <span className={'posbadge bg-' + (p?.pos || '')}>{p?.pos}</span>
-                        {p?.team || 'FA'} · Bye {p?.bye ?? '—'}
+                        {p?.team || 'FA'}
+                        {gameOf(p)
+                          ? <><span className="dot">·</span>
+                              <b className={'gclock' + (gameOf(p).done ? '' : gameOf(p).state === 'in' ? ' on' : '')}>
+                                {gameOf(p).detail}</b></>
+                          : <> · Bye {p?.bye ?? '—'}</>}
                       </div>
                     </div>
-                    <div className="nums"><div className="num"><b>{perGame(p, projKey) ?? '—'}</b><s>PROJ</s></div></div>
+                    <div className="nums"><div className="num">
+                      <b>{shownPts(p) ?? '—'}</b>
+                      <s>{liveOf(p) == null ? 'PROJ' : (gameOf(p)?.done ? 'FINAL' : 'LIVE')}</s>
+                    </div></div>
                   </div>
                 )
               })}
@@ -366,15 +433,25 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
                 <div className="mside r">
                   <div className="mname">{oppId ? teamById.get(oppId)?.name : 'BYE'}</div>
                   <div className="mscore">
-                    {oppId ? <Sup v={rosterOf(oppId).slice(0, 9).reduce((s, p) => s + (perGame(p, projKey) || 0), 0)} /> : '—'}
+                    {oppId ? <Sup v={(oppStarters || []).reduce((s, x) => s + (shownPts(x.p) || 0), 0)} /> : '—'}
                   </div>
                   <div className="microlabel">projected</div>
                 </div>
               </div>
-              <div className="notice">
-                The 2026 season hasn't started, so these are projections, not live scores.
-                Real points appear here once games are played.
-              </div>
+              {isLive ? (
+                <div className="livebar">
+                  <span className="dotlive" />
+                  {nfl?.replay && <b className="replaytag">REPLAY {nfl.season} WK{nfl.week}</b>}
+                  {live.live > 0 ? `${live.live} game${live.live === 1 ? '' : 's'} in progress`
+                                 : `${live.finals} game${live.finals === 1 ? '' : 's'} final`}
+                  <span className="lb-sub">scores update on their own</span>
+                </div>
+              ) : (
+                <div className="notice">
+                  No games have kicked off for week {week} yet, so these are projections.
+                  Real points replace them the moment the ball is snapped.
+                </div>
+              )}
               {oppId && oppStarters === null &&
                 <div className="loading"><span className="spinner" />Loading matchup…</div>}
               {oppId && oppStarters && (() => {
@@ -387,8 +464,8 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
                     <div className="mtop">
                       <Shot p={x?.p} size={36} />
                       <div className="mpts">
-                        <b>{x?.p ? <Sup v={perGame(x.p, projKey) ?? 0} /> : '—'}</b>
-                        <i>proj</i>
+                        <b>{x?.p ? <Sup v={shownPts(x.p) ?? 0} /> : '—'}</b>
+                        <i>{x?.p && liveOf(x.p) != null ? (gameOf(x.p)?.done ? 'final' : 'live') : 'proj'}</i>
                       </div>
                     </div>
                     <div className="mwho">
@@ -398,7 +475,7 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
                     </div>
                     <div className="mfoot">
                       <span>{x?.p ? (x.p.team || 'FA') : '—'}</span>
-                      <span>Bye {x?.p?.bye ?? '—'}</span>
+                      <span>{gameOf(x?.p)?.detail || ('Bye ' + (x?.p?.bye ?? '—'))}</span>
                     </div>
                   </div>
                 )

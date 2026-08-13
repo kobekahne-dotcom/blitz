@@ -877,3 +877,24 @@ html[data-theme="dark"] .sheetback { background: rgba(0,0,0,.7); }
 }
 html[data-theme="dark"] .sheet-foot { box-shadow: 0 -6px 14px rgba(0,0,0,.45); }
 .sheet-foot .btn.block { margin-top: 6px; }
+
+/* ---------- live ---------- */
+.livebar {
+  display: flex; align-items: center; gap: 8px;
+  margin: 4px 12px 10px; padding: 10px 14px;
+  background: var(--surface); border-radius: 12px; box-shadow: var(--shadow);
+  font-size: 13px; font-weight: 700; color: var(--ink);
+}
+.livebar .lb-sub { margin-left: auto; font-weight: 500; color: var(--dim); font-size: 11.5px; }
+.dotlive {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--bad); flex: 0 0 auto;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
+.gclock { font-weight: 700; color: var(--dim); font-size: 11.5px; }
+.gclock.on { color: var(--bad); }
+.replaytag {
+  background: var(--warn-bg); color: #9A7B10; font-size: 9px; font-weight: 800;
+  letter-spacing: .06em; padding: 2px 6px; border-radius: 4px;
+}
+html[data-theme="dark"] .replaytag { color: var(--gold); }
