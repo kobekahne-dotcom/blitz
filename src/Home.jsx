@@ -34,6 +34,16 @@ export default function Home({ uid, prefillCode }) {
 
   useEffect(() => { load() }, [load])
 
+  /* #/go jumps straight into your league. With one league it opens it; with
+     several it lands here so you can pick. Makes the app bookmarkable and
+     home-screen-able right to the thing you actually want. */
+  useEffect(() => {
+    if (!leagues || window.location.hash !== '#/go') return
+    const real = leagues.filter(l => !l.is_mock)
+    const target = real.length ? real[0] : leagues[0]
+    if (target) go('#/league/' + target.id)
+  }, [leagues])
+
   const remove = async (l) => {
     setBusyDel(true); setErr(null)
     const { error } = await supabase.rpc('delete_league', { p_league_id: l.id })

@@ -593,7 +593,6 @@ function withMarkers(list, upcoming, teams) {
   return out
 }
 
-const BOT_CAP = { QB: 2, RB: 6, WR: 7, TE: 2, K: 1, DEF: 1 }
 
 function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backToSeason }) {
   const [players, setPlayers] = useState(null)
@@ -648,47 +647,29 @@ function DraftRoom({ league, teams, draft, picks, uid, connIssue, refetch, backT
   const playerById = useMemo(() => new Map((players || []).map(p => [p.id, p])), [players])
   const projKey = league.scoring === 'ppr' ? 'ppr' : league.scoring === 'half' ? 'half' : 'std'
 
-  /* ---- MOCK: this browser plays every computer team ---- */
+  /* ---- MOCK: this browser plays every computer team ----
+     The bots call the SAME autopick brain the server uses when a real
+     manager's clock expires. They used to run a second, simpler brain in
+     the browser whose filters could allow nothing at all late in a draft
+     (roster full of RB/WR, two QBs and TEs already, still outside the
+     kicker/defence window) — it then silently did nothing and the bot ate
+     the entire clock. One brain, already tested across every draft slot
+     and league size, cannot dry up: it always has a fallback. */
   useEffect(() => {
     clearTimeout(botTimer.current)
     if (!league.is_mock || draft.status !== 'active' || done || !players) return
     if (!teamOnClock || teamOnClock.owner_uid === uid) return
 
     botTimer.current = setTimeout(async () => {
-      const mine = picks.filter(p => p.team_id === teamOnClock.id)
-      const counts = {}
-      for (const pk of mine) {
-        const pl = playerById.get(pk.player_id)
-        if (pl) counts[pl.pos] = (counts[pl.pos] || 0) + 1
-      }
-      const myPickCount = mine.length
-      const roundsLeft = league.rounds - myPickCount
-      const roundNo = myPickCount + 1
-      const late = roundsLeft <= 2                       // kicker/defense window
-      const midlate = roundNo >= Math.max(3, Math.ceil(league.rounds * 0.66))
-      const cfg = league.roster || { QB:1, RB:2, WR:2, TE:1, FLEX:1, K:1, DEF:1 }
-      const allowed = pos => {
-        const have = counts[pos] || 0
-        if (pos === 'QB') return have < (cfg.QB ?? 1) || (midlate && have < 2)
-        if (pos === 'TE') return have < (cfg.TE ?? 1) || (midlate && have < 2)
-        if (pos === 'RB') return have < 6
-        if (pos === 'WR') return have < 7
-        if (pos === 'K')   return late && have < (cfg.K ?? 1)
-        if (pos === 'DEF') return late && have < (cfg.DEF ?? 1)
-        return false
-      }
-      const cands = players
-        .filter(p => !takenIds.has(p.id))
-        .filter(p => allowed(p.pos))
-        .sort((a, b) => (a.adp ?? 9999) - (b.adp ?? 9999) || (b[projKey] ?? 0) - (a[projKey] ?? 0))
-      const pool = cands.slice(0, 3)
-      const choice = pool[Math.floor(Math.random() * pool.length)] || cands[0]
-      if (!choice) return
+      const { data: pick, error } = await supabase.rpc('autopick_choice', {
+        p_draft_id: draft.id, p_team_id: teamOnClock.id,
+      })
+      if (error || !pick) return          // the server clock still covers us
       await supabase.rpc('make_pick', {
-        p_draft_id: draft.id, p_team_id: teamOnClock.id, p_player_id: choice.id,
+        p_draft_id: draft.id, p_team_id: teamOnClock.id, p_player_id: pick,
       })
       refetch()
-    }, 900 + Math.random() * 1600)
+    }, 700 + Math.random() * 1100)
 
     return () => clearTimeout(botTimer.current)
   }, [league.is_mock, draft.current_pick, draft.status, done, players, teamOnClock?.id, uid])
