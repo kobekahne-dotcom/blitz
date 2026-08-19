@@ -4,6 +4,7 @@ import LeagueInfo from './LeagueInfo.jsx'
 import { useScrollLock } from './lockScroll.js'
 import Trades from './Trades.jsx'
 import Chat from './Chat.jsx'
+import News from './News.jsx'
 import { fetchLiveWeek, currentWeek, fromSleeperWeek } from './live.js'
 import { scorePlayer } from './scoring.js'
 
@@ -114,6 +115,7 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
   const [tab, setTab] = useState('team')
   const [info, setInfo] = useState(false)   // League Info takes over the screen
   const [chat, setChat] = useState(false)
+  const [news, setNews] = useState(false)
   const [week, setWeek] = useState(1)
   const [lineup, setLineup] = useState(null)
   const [allPicks, setAllPicks] = useState(null)
@@ -383,6 +385,11 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
       p_scores: { [myTeam.id]: total(mineIds), [oppId]: total(oppIds) },
     }).then(({ data }) => { if (data?.recorded) loadMatchups() }).catch(() => {})
   }, [live?.finals, live?.games, scoringCfg, myMatchup?.id, lineup, oppStarters, week])
+
+  if (news) return (
+    <News players={players} roster={roster} myTeam={myTeam} byId={byId}
+      onOpenPlayer={onOpenPlayer} onClose={() => setNews(false)} />
+  )
 
   if (chat) return (
     <Chat league={league} myTeam={myTeam} teams={teams} onClose={() => setChat(false)} />
@@ -663,6 +670,9 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
           </button>
           <button className="linkrow" onClick={() => setChat(true)}>
             League Chat<i className="chev">›</i>
+          </button>
+          <button className="linkrow" onClick={() => setNews(true)}>
+            News &amp; Injuries<i className="chev">›</i>
           </button>
 
           <div className="sect"><h2>Standings</h2></div>

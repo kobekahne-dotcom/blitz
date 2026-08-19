@@ -976,3 +976,19 @@ html[data-theme="dark"] .replaytag { color: var(--gold); }
   background: var(--chipbg); border: 1px solid var(--line); color: var(--ink); border-radius: 999px;
 }
 .chatbar input:focus { outline: none; border-color: var(--brand); background: var(--surface); }
+
+/* ---------- news ---------- */
+.newsrow { width: calc(100% - 24px); text-align: left; border: 0; font-family: inherit; }
+.injpill {
+  flex: 0 0 auto; min-width: 46px; text-align: center; border-radius: 8px;
+  padding: 5px 6px; font-size: 9.5px; font-weight: 800; letter-spacing: .04em;
+}
+.injpill.sev1 { background: var(--warn-bg); color: #9A7B10; }
+.injpill.sev2 { background: var(--warn-bg); color: #9A5B10; }
+.injpill.sev3 { background: var(--bad-bg); color: var(--bad); }
+html[data-theme="dark"] .injpill.sev1, html[data-theme="dark"] .injpill.sev2 { color: var(--gold); }
+.newstag { color: var(--brand); font-weight: 800; }
+.newstag.free { color: var(--good); }
+.trendarrow { flex: 0 0 auto; width: 30px; text-align: center; font-size: 13px; }
+.trendarrow.up { color: var(--good); }
+.trendarrow.down { color: var(--bad); }
