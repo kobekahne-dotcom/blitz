@@ -3,6 +3,7 @@ import { supabase } from './supabase.js'
 import LeagueInfo from './LeagueInfo.jsx'
 import { useScrollLock } from './lockScroll.js'
 import Trades from './Trades.jsx'
+import Chat from './Chat.jsx'
 import { fetchLiveWeek, currentWeek, fromSleeperWeek } from './live.js'
 import { scorePlayer } from './scoring.js'
 
@@ -112,6 +113,7 @@ function BottomNav({ tab, setTab }) {
 export default function Season({ league, teams, draft, uid, players, onOpenPlayer, goDraft }) {
   const [tab, setTab] = useState('team')
   const [info, setInfo] = useState(false)   // League Info takes over the screen
+  const [chat, setChat] = useState(false)
   const [week, setWeek] = useState(1)
   const [lineup, setLineup] = useState(null)
   const [allPicks, setAllPicks] = useState(null)
@@ -381,6 +383,10 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
       p_scores: { [myTeam.id]: total(mineIds), [oppId]: total(oppIds) },
     }).then(({ data }) => { if (data?.recorded) loadMatchups() }).catch(() => {})
   }, [live?.finals, live?.games, scoringCfg, myMatchup?.id, lineup, oppStarters, week])
+
+  if (chat) return (
+    <Chat league={league} myTeam={myTeam} teams={teams} onClose={() => setChat(false)} />
+  )
 
   if (info) return (
     <LeagueInfo league={league} teams={teams} uid={uid}
@@ -654,6 +660,9 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
           </button>
           <button className="linkrow" onClick={() => setInfo('activity')}>
             Recent Activity<i className="chev">›</i>
+          </button>
+          <button className="linkrow" onClick={() => setChat(true)}>
+            League Chat<i className="chev">›</i>
           </button>
 
           <div className="sect"><h2>Standings</h2></div>
