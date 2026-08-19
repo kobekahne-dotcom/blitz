@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from './supabase.js'
 import LeagueInfo from './LeagueInfo.jsx'
 import { useScrollLock } from './lockScroll.js'
+import Trades from './Trades.jsx'
 import { fetchLiveWeek, currentWeek, fromSleeperWeek } from './live.js'
 import { scorePlayer } from './scoring.js'
 
@@ -86,6 +87,7 @@ const NAV = [
   ['team', 'Team', <path key="t" d="M12 3l8 3v5c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-3z" />],
   ['matchup', 'Matchup', <ellipse key="m" cx="12" cy="12" rx="9" ry="5.6" transform="rotate(-32 12 12)" />],
   ['players', 'Players', <g key="p"><circle cx="9" cy="8.5" r="3.2" /><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5" /><circle cx="17" cy="9.5" r="2.6" /><path d="M15.5 14.4c2.4.2 4.3 1.8 4.9 4.6" /></g>],
+  ['trades', 'Trades', <g key="tr"><path d="M4 8h13l-3.2-3.2M20 16H7l3.2 3.2" /></g>],
   ['league', 'League', <g key="l"><path d="M7 4h10v4a5 5 0 0 1-10 0V4z" /><path d="M7 5H4.5a3 3 0 0 0 3 4M17 5h2.5a3 3 0 0 1-3 4M12 13v4m-4 4h8m-4-4v4" /></g>],
 ]
 function BottomNav({ tab, setTab }) {
@@ -636,6 +638,13 @@ export default function Season({ league, teams, draft, uid, players, onOpenPlaye
             })
             if (okd) setPending(null)
           }} />
+      )}
+
+      {tab === 'trades' && (
+        myTeam
+          ? <Trades league={league} myTeam={myTeam} teams={teams}
+              roster={roster || []} byId={byId} onReload={loadRoster} />
+          : <div className="hint pad">You don't have a team in this league.</div>
       )}
 
       {tab === 'league' && (

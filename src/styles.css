@@ -1,5 +1,4 @@
-/* ============================================================
-   BLITZ — NFL Fantasy look.
+/* =====================================================   BLITZ — NFL Fantasy look.
    White rounded cards floating on a warm grey page, one cyan
    accent, tiny uppercase labels above big values. Colour only
    ever means something (good/bad/position) — never decoration.
@@ -912,3 +911,35 @@ html[data-theme="dark"] .replaytag { color: var(--gold); }
 .fieldpill.field { background: var(--good); color: #fff; }
 .fieldpill.sideline { background: var(--chipbg); color: var(--dim); }
 .dnd { margin-left: 6px; font-size: 10.5px; font-weight: 700; color: var(--brand); }
+/* ---------- trades ---------- */
+.tradecard {
+  background: var(--surface); border-radius: 12px; box-shadow: var(--shadow);
+  margin: 0 12px 10px; padding: 12px 14px;
+}
+.tchead { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.tstat { font-size: 9px; font-weight: 800; letter-spacing: .06em; padding: 2px 7px; border-radius: 999px;
+  background: var(--chipbg); color: var(--dim); white-space: nowrap; }
+.tstat.s-pending  { background: var(--info-bg); color: var(--brand); }
+.tstat.s-executed { background: var(--good-bg); color: var(--good); }
+.tstat.s-invalid, .tstat.s-vetoed { background: var(--bad-bg); color: var(--bad); }
+.tcline { display: flex; gap: 10px; align-items: baseline; padding: 4px 0; }
+.tcline s { flex: 0 0 68px; font-size: 8.5px; font-weight: 800; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--dim); text-decoration: none; }
+.tcline b { flex: 1; font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.tcnote { margin-top: 7px; font-size: 12px; color: var(--dim); font-style: italic; }
+.tcnote.bad { color: var(--bad); font-style: normal; }
+
+.traderow {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  padding: 8px 10px; margin-bottom: 6px; text-align: left; min-height: 44px;
+  background: var(--chipbg); border: 1px solid transparent; border-radius: 9px;
+  color: inherit; font-family: inherit;
+}
+.traderow.on.give { border-color: var(--bad); background: var(--bad-bg); }
+.traderow.on.get  { border-color: var(--good); background: var(--good-bg); }
+.traderow .tname { flex: 1; min-width: 0; font-size: 14px; font-weight: 700; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.traderow .tteam { font-size: 11px; color: var(--dim); }
+.traderow .tmark { width: 16px; text-align: center; font-weight: 800; color: var(--good); }
+.traderow.on.give .tmark { color: var(--bad); }
+.warnbar.tight { margin: 0 0 6px; }
